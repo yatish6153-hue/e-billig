@@ -1,0 +1,281 @@
+/* The bill — used in the app's bill view and on the customer's link.
+   Studio style: header band with lens rings, accent bar, clean items, stamp, and a film-strip
+   footer whose frames hold the business's phone, email, website and address. */
+.invoice {
+  --accent: #f26b1d;
+  --ink: #16181d;
+  --muted: #6b7280;
+  --line: #ececec;
+  --band: #141414;
+  --accent-soft: color-mix(in srgb, var(--accent) 9%, #fff);
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  color: var(--ink);
+  font-family: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid #e7e7e7;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  container: invoice / inline-size;
+}
+.invoice * { box-sizing: border-box; }
+.invoice > *:not(.inv-watermark) { position: relative; z-index: 1; }
+.inv-watermark {
+  position: absolute; top: 45%; left: 50%; z-index: 0;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  font-size: 96px; font-weight: 800; letter-spacing: 0.06em; white-space: nowrap; pointer-events: none;
+  color: rgba(148, 163, 184, 0.16);
+}
+.inv-status-cancelled .inv-watermark { color: rgba(220, 38, 38, 0.1); }
+
+/* Header band */
+.inv-band {
+  display: flex; justify-content: space-between; align-items: center; gap: 20px;
+  padding: 26px 32px; background: var(--band); color: #fff;
+}
+.inv-light .inv-band { background: #fff; color: var(--ink); border-bottom: 1px solid var(--line); }
+/* Faint lens rings in the business colour, behind the bill number. */
+.inv-band { overflow: hidden; }
+.inv-band > * { position: relative; z-index: 1; }
+.inv-band::after {
+  content: ''; position: absolute; z-index: 0; right: -60px; top: -90px; width: 260px; height: 260px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 18px, color-mix(in srgb, var(--accent) 30%, transparent) 18px 19.5px);
+  opacity: 0.55; pointer-events: none;
+}
+.inv-light .inv-band::after { opacity: 0.4; }
+.inv-brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.inv-logo { max-width: 120px; max-height: 72px; width: auto; height: auto; object-fit: contain; border-radius: 10px; flex-shrink: 0; }
+.inv-brand-text { min-width: 0; }
+.inv-business { font-size: 21px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+.inv-tagline { margin-top: 5px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+.inv-doc { text-align: right; flex-shrink: 0; }
+.inv-title { font-size: 11.5px; font-weight: 750; letter-spacing: 0.26em; text-transform: uppercase; color: var(--accent); }
+.inv-number { font-size: 23px; font-weight: 750; letter-spacing: -0.01em; line-height: 1.25; }
+.inv-date { font-size: 12.5px; color: #a3a3a3; }
+.inv-light .inv-date { color: var(--muted); }
+.inv-accent { height: 5px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #ffc857)); }
+
+/* Billed to / from */
+.inv-info { display: flex; justify-content: space-between; gap: 28px; padding: 24px 32px 6px; }
+.inv-label {
+  display: block; margin-bottom: 6px;
+  font-size: 10.5px; font-weight: 750; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+}
+.inv-to-name { font-size: 17px; font-weight: 700; line-height: 1.3; }
+.inv-to-line { display: flex; align-items: center; gap: 6px; color: #374151; margin-top: 2px; }
+.inv-icon { width: 14px; height: 14px; flex-shrink: 0; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.inv-from { text-align: right; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 46%; }
+
+/* Items */
+.inv-table-wrap { padding: 10px 32px 0; }
+.inv-items { width: 100%; border-collapse: collapse; }
+.inv-items th {
+  padding: 10px 8px; text-align: left; white-space: nowrap;
+  font-size: 10.5px; font-weight: 750; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 2px solid var(--ink);
+}
+.inv-items td { padding: 13px 8px; border-bottom: 1px dashed #dedede; vertical-align: top; }
+.inv-items th:first-child, .inv-items td:first-child { padding-left: 0; }
+.inv-items th:last-child, .inv-items td:last-child { padding-right: 0; }
+.inv-items .r { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.inv-item-name { font-weight: 650; font-size: 13.5px; }
+.inv-item-meta { color: var(--muted); font-size: 11px; }
+.inv-item-mobile { display: none; color: #4b5563; font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.inv-amount { font-weight: 700; }
+
+/* Totals, advance and balance */
+.inv-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding: 18px 32px 6px; }
+.inv-summary-left { flex: 1; min-width: 0; }
+.inv-summary-right { width: 300px; flex-shrink: 0; }
+.inv-totals { width: 100%; border-collapse: collapse; }
+.inv-totals td { padding: 4px 0; color: #4b5563; }
+.inv-totals .r { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inv-grand td { padding-top: 10px; border-top: 2px solid var(--ink); font-size: 19px; font-weight: 750; color: var(--ink); }
+.inv-pay { margin-top: 12px; border-radius: 12px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 35%, #fff); }
+.inv-pay-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; font-variant-numeric: tabular-nums; background: var(--accent-soft); }
+.inv-pay-balance { background: var(--accent); color: #fff; font-size: 16px; font-weight: 750; }
+.inv-stamp {
+  display: inline-block; margin: 16px 0 0 4px; padding: 6px 16px;
+  border: 3px double currentColor; border-radius: 10px; transform: rotate(-7deg);
+  font-size: 15px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.85;
+}
+.inv-stamp-paid { color: #15803d; }
+.inv-stamp-due { color: var(--accent); }
+.inv-stamp-cancelled { color: #dc2626; }
+.inv-stamp-draft { color: #94a3b8; }
+.inv-included { margin-top: 18px; max-width: 260px; font-size: 12px; color: var(--muted); }
+.inv-included > div:not(.inv-label) { display: flex; justify-content: space-between; gap: 12px; }
+
+/* Notes, terms, footer */
+.inv-section { padding: 0 32px; margin-top: 18px; }
+.inv-terms > div:last-child { color: var(--muted); font-size: 12px; }
+.inv-foot { margin-top: 30px; }
+/* — 📷 Thank you for choosing … — with lines fading in from both sides. */
+.inv-thanks { display: flex; align-items: center; gap: 14px; padding: 0 32px 16px; color: var(--muted); font-size: 12.5px; }
+.inv-thanks::before, .inv-thanks::after {
+  content: ''; flex: 1; min-width: 16px; height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, #fff));
+}
+.inv-thanks::after { transform: scaleX(-1); }
+.inv-thanks-text { display: inline-flex; align-items: center; gap: 8px; font-style: italic; text-align: center; }
+.inv-thanks-text b { font-style: normal; font-weight: 700; color: var(--ink); }
+/* The film strip: sprocket holes along both edges, the contact details in its frames. */
+.inv-reel { position: relative; padding: 17px 32px; background: var(--band); color: #fff; }
+.inv-light .inv-reel { background: #2a2a2a; }
+.inv-reel-empty { height: 26px; padding: 0; }
+.inv-reel::before, .inv-reel::after {
+  content: ''; position: absolute; left: 0; right: 0; height: 5px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.78) 0 9px, transparent 9px 20px);
+}
+.inv-reel::before { top: 5px; }
+.inv-reel::after { bottom: 5px; }
+.inv-contacts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 10px; padding: 4px 0; }
+.inv-contact {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 12px 5px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px; background: rgba(255, 255, 255, 0.05);
+  color: #fff; font-size: 12px; font-weight: 550; text-decoration: none;
+}
+a.inv-contact:hover { border-color: var(--accent); }
+.inv-contact-ic { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
+.inv-contact-ic .inv-icon { width: 13px; height: 13px; stroke: #fff; }
+.inv-contact-text { min-width: 0; overflow-wrap: anywhere; }
+/* The address gets a line of its own under the frames. */
+.inv-contact-pin { flex-basis: 100%; justify-content: center; padding: 2px 0 0; border: 0; background: none; color: #d4d4d4; font-weight: 450; }
+.inv-contact-pin .inv-contact-ic { width: 20px; height: 20px; background: none; }
+.inv-contact-pin .inv-icon { width: 15px; height: 15px; stroke: var(--accent); }
+
+@media (max-width: 640px) {
+  .invoice { border-radius: 12px; font-size: 12.5px; }
+}
+/* The bill adapts to its own width — a phone, or a narrow preview column in the app. */
+@container invoice (max-width: 600px) {
+  .inv-band { flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px 18px; }
+  .inv-doc { text-align: left; }
+  .inv-logo { max-width: 96px; max-height: 60px; }
+  .inv-business { font-size: 18px; }
+  .inv-info { flex-direction: column; gap: 14px; padding: 18px 18px 4px; }
+  .inv-from { text-align: left; max-width: none; }
+  .inv-table-wrap { padding: 6px 18px 0; }
+  .inv-items .inv-col-detail { display: none; }
+  .inv-item-mobile { display: block; }
+  .inv-summary { flex-direction: column-reverse; gap: 10px; padding: 16px 18px 4px; }
+  .inv-summary-right { width: 100%; }
+  .inv-section { padding: 0 18px; }
+  /* Narrow: the camera over the thank-you line, and the contacts as one column of equal frames. */
+  .inv-thanks { justify-content: center; padding: 0 18px 12px; }
+  .inv-thanks::before, .inv-thanks::after { display: none; }
+  .inv-thanks-text { flex-direction: column; gap: 4px; }
+  .inv-reel { padding: 17px 14px; }
+  .inv-contacts { flex-direction: column; align-items: stretch; gap: 7px; }
+  .inv-contact { font-size: 11.5px; }
+  .inv-contact-pin { justify-content: flex-start; padding: 3px 0 0 6px; }
+  .inv-contact-pin .inv-contact-ic { width: 24px; }
+  .inv-watermark { font-size: 56px; }
+}
+
+/* ---- Work tracking chain: ✓ Design › ● Review › Print › Frame › Final ------ */
+.chain {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 0; margin: 0; padding: 0; list-style: none;
+  font-size: 12.5px; white-space: nowrap; min-width: 0;
+}
+.chain li { display: inline-flex; align-items: center; gap: 4px; color: #94a3b8; font-weight: 550; }
+.chain li + li::before { content: '›'; margin: 0 7px; color: #cbd5e1; font-weight: 400; }
+.chain .c-done { color: var(--chain, #2563eb); }
+.chain .c-current > span { padding: 2px 10px; border-radius: 999px; background: var(--chain, #2563eb); color: #fff; font-weight: 700; }
+.chain-complete .c-current > span { background: #16a34a; }
+.chain-complete .c-done { color: #16a34a; }
+.c-check { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- Customer's link ----------------------------------------------------- */
+.public-page {
+  margin: 0;
+  background: #f4f5f7;
+  font-family: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #0f172a;
+}
+.public-toolbar {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(6px); border-bottom: 1px solid #e5e7eb;
+}
+.public-toolbar-inner {
+  max-width: 880px; margin: 0 auto; padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.public-from { font-size: 14px; color: #475569; }
+.public-from strong { color: #0f172a; }
+.public-actions { display: flex; gap: 8px; }
+.public-btn {
+  display: inline-flex; align-items: center; height: 38px; padding: 0 16px;
+  border-radius: 8px; border: 1px solid #d0d7e2; background: #fff; color: #0f172a;
+  font: inherit; font-size: 14px; font-weight: 500; text-decoration: none; cursor: pointer;
+}
+.public-btn:hover { background: #f8fafc; }
+.public-btn-primary { background: #16181d; border-color: #16181d; color: #fff; }
+.public-btn-primary:hover { background: #000; }
+.public-main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+.public-status {
+  background: #fff; border: 1px solid #e7e7e7; border-radius: 14px; padding: 14px 18px; margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.public-status-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-size: 14px; }
+.public-status-date { color: #64748b; font-size: 13px; }
+.public-status .chain { overflow-x: auto; padding-bottom: 2px; }
+.public-status-text { margin: 10px 0 0; color: #475569; font-size: 13.5px; }
+.public-missing { max-width: 520px; margin: 80px auto; padding: 0 16px; text-align: center; }
+.public-missing h1 { font-size: 22px; }
+.public-missing p { color: #64748b; }
+
+/* Balance to pay, above the bill */
+.public-pay {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  background: #fff; border: 1px solid #e7e7e7; border-left: 5px solid var(--accent, #f26b1d); border-radius: 14px;
+  padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+}
+.public-pay-label { color: #64748b; font-size: 13px; }
+.public-pay-amount { font-size: 24px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.public-btn-pay { background: var(--accent, #f26b1d); border-color: var(--accent, #f26b1d); color: #fff; font-weight: 650; height: 44px; padding: 0 22px; }
+.public-btn-pay:hover { background: var(--accent, #f26b1d); filter: brightness(0.94); }
+
+/* The payment page */
+.pay-page { max-width: 440px; margin: 0 auto; padding: 24px 16px 48px; }
+.pay-card {
+  background: #fff; border: 1px solid #e7e7e7; border-top: 5px solid var(--accent, #f26b1d); border-radius: 16px;
+  padding: 22px 22px 18px; box-shadow: 0 4px 18px rgba(15, 23, 42, 0.07); text-align: center;
+}
+.pay-head { display: flex; align-items: center; gap: 12px; text-align: left; }
+.pay-logo { width: 54px; height: 54px; object-fit: contain; border-radius: 10px; background: #141414; }
+.pay-biz { font-weight: 700; font-size: 16px; }
+.pay-bill { color: #64748b; font-size: 13px; }
+.pay-amount { margin: 20px 0 6px; }
+.pay-amount span { display: block; color: #64748b; font-size: 13px; }
+.pay-amount strong { display: block; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.pay-sum { display: flex; justify-content: center; gap: 6px 10px; margin: 0 0 18px; color: #64748b; font-size: 13px; }
+.pay-sum dt::after { content: ':'; }
+.pay-sum dd { margin: 0 8px 0 0; color: #0f172a; font-variant-numeric: tabular-nums; }
+.pay-btn {
+  display: flex; align-items: center; justify-content: center; height: 52px; border-radius: 12px;
+  background: var(--accent, #f26b1d); color: #fff; font-size: 18px; font-weight: 700; text-decoration: none;
+}
+.pay-btn:hover { filter: brightness(0.94); }
+.pay-apps { margin: 8px 0 0; color: #64748b; font-size: 12.5px; }
+.pay-or { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: #94a3b8; font-size: 12.5px; }
+.pay-or::before, .pay-or::after { content: ''; flex: 1; height: 1px; background: #e5e7eb; }
+.pay-qr svg { display: block; width: 210px; height: 210px; margin: 0 auto; }
+.pay-upi { margin: 10px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.pay-note { margin: 14px 0 0; color: #475569; font-size: 13px; }
+.pay-done { margin: 6px 0 0; padding: 12px; border-radius: 10px; background: #dcfce7; color: #15803d; font-weight: 650; }
+.pay-view { display: inline-block; margin-top: 16px; color: #475569; font-size: 13.5px; }
+
+@media print {
+  .public-toolbar, .public-status, .public-pay { display: none; }
+  .public-page { background: #fff; }
+  .public-main { padding: 0; max-width: none; }
+  .invoice { border: 0; box-shadow: none; border-radius: 0; }
+  .inv-items .inv-col-detail { display: table-cell; }
+  .inv-item-mobile { display: none; }
+  .inv-band, .inv-accent, .inv-reel, .inv-contact-ic, .inv-pay-row, .inv-items th, .inv-stamp {
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+}
