@@ -14,7 +14,18 @@ eBilling: billing, job tracking and a day book for Devesh Digital Studio (a phot
 - `npm test`: runs `node --test test/*.test.js`. On Node 24, `node --test test/` does not work; pass the glob.
 - One test: `node --test --test-name-pattern="day book" test/api.test.js`.
 
-Requires Node ≥ 22.13. Environment: `PORT`, `DB_PATH` (default `data/ebilling.db`), `PUBLIC_URL` (base of share links sent on WhatsApp), `TRUST_PROXY`, `COOKIE_SECURE`, `NODE_ENV=production` (turns the demo login off), `DEMO_ACCOUNT=true|false`. When enabled, a shared demo login from `server/seed.js` is created on first start.
+Requires Node ≥ 22.13. Environment:
+- `PORT`: a number, or a socket path from the host.
+- `DB_PATH`: default `data/ebilling.db`; a leading `~/` is the home folder.
+- `PUBLIC_URL`: base of the share links sent on WhatsApp.
+- `TRUST_PROXY` and `COOKIE_SECURE`.
+- `NODE_ENV=production`: turns the demo login off.
+- `DEMO_ACCOUNT=true|false`. When enabled, a shared demo login from `server/seed.js` is created on first start.
+- `ALLOW_SIGNUP=false`: closes registration once any user exists (`signupAllowed()` in `server/routes/auth.js`; `/auth/config` reports it to the login page).
+
+While the demo login is off, `/auth/login` refuses `DEMO_ACCOUNT` with its public password (403 `DEMO_PASSWORD`): the owner's real bills live in the demo business, so the live server must never open with `demo1234`. `npm run export-db` (`tools/export-db.js`) writes a single-file `VACUUM INTO` copy for uploading. It warns while that password is still set.
+
+Live target: a Hostinger Node.js Web App on `billing.deveshstudio.com`. Every deploy replaces the app folder there, so `DB_PATH` points outside it (`~/domains/billing.deveshstudio.com/ebilling-data/ebilling.db`).
 
 ## The local database is real business data
 

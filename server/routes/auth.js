@@ -22,6 +22,12 @@ function readPreferences(value) {
 
 const router = express.Router();
 
+/** New accounts are allowed unless ALLOW_SIGNUP=false; even then, the first account on an empty server can be made. */
+export function signupAllowed() {
+  if (process.env.ALLOW_SIGNUP !== 'false') return true;
+  return !get('SELECT 1 FROM users LIMIT 1');
+}
+
 export function password(value, field = 'password', label = 'Password') {
   if (typeof value !== 'string' || value.length < 8) throw v.badRequest(`${label} must be at least 8 characters.`, field);
   if (value.length > 200) throw v.badRequest(`${label} is too long.`, field);
@@ -59,10 +65,16 @@ export function mePayload(userId) {
 }
 
 router.get('/config', (req, res) => {
-  res.json(demoAccountEnabled() ? { demo: { email: DEMO_ACCOUNT.email, password: DEMO_ACCOUNT.password } } : { demo: null });
+  res.json({
+    demo: demoAccountEnabled() ? { email: DEMO_ACCOUNT.email, password: DEMO_ACCOUNT.password } : null,
+    signup: signupAllowed(),
+  });
 });
 
 router.post('/register', async (req, res) => {
+  if (!signupAllowed()) {
+    throw new v.HttpError(403, 'New accounts are closed on this server. Please contact the owner.', { code: 'SIGNUP_CLOSED' });
+  }
   const b = req.body || {};
   const businessName = v.text(b.business_name, 'business_name', 'Business name', { max: 120, required: true });
   const name = v.text(b.name, 'name', 'Your name', { max: 80, required: true });
@@ -95,6 +107,10 @@ router.post('/login', async (req, res) => {
   if (!user || !ok) {
     recordLoginFailure(key);
     throw new v.HttpError(401, 'Incorrect email or password.', { code: 'BAD_CREDENTIALS' });
+  }
+  // With the demo login off (online), its published password never opens it: real bills may have been made there.
+  if (!demoAccountEnabled() && email === DEMO_ACCOUNT.email && b.password === DEMO_ACCOUNT.password) {
+    throw new v.HttpError(403, 'This login still has the public demo password. On your own computer, sign in and change it in Settings → Account, then upload the database again.', { code: 'DEMO_PASSWORD' });
   }
   clearLoginFailures(key);
   startSession(req, res, user.id);

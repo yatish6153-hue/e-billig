@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { openDb, closeDb, get as dbGet, run as dbRun } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { ensureDemoAccount, DEMO_ACCOUNT } from '../server/seed.js';
+import { hashPassword } from '../server/auth.js';
 
 let server;
 let base;
@@ -1300,4 +1301,40 @@ test('static app shell, security headers and 404s', async () => {
   assert.equal(res.headers.get('x-frame-options'), 'DENY');
   assert.equal((await fetch(`${base}/api/nope`, { headers: { 'X-Requested-With': 'fetch' } })).status, 404);
   assert.equal((await fetch(`${base}/shared/calc.js`)).status, 200);
+});
+
+// Runs last on purpose: at the end it swaps in an empty database.
+test('online: sign-up can be closed, and the public demo password never opens the demo login', async () => {
+  delete process.env.DEMO_ACCOUNT;
+  await ensureDemoAccount();
+  process.env.ALLOW_SIGNUP = 'false';
+  process.env.DEMO_ACCOUNT = 'false';
+  try {
+    const anon = client();
+    const config = (await anon.get('/api/auth/config')).data;
+    assert.equal(config.signup, false);
+    assert.equal(config.demo, null);
+    const closed = await anon.post('/api/auth/register', { business_name: 'Late', name: 'Late', email: 'late@test.example', password: 'password123' });
+    assert.equal(closed.status, 403);
+    assert.equal(closed.data.error.code, 'SIGNUP_CLOSED');
+
+    const blocked = await client().post('/api/auth/login', DEMO_ACCOUNT);
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.data.error.code, 'DEMO_PASSWORD');
+    assert.equal((await client().post('/api/auth/login', { email: DEMO_ACCOUNT.email, password: 'not-the-password' })).status, 401);
+
+    dbRun('UPDATE users SET password_hash = ? WHERE email = ?', await hashPassword('a-new-strong-pass'), DEMO_ACCOUNT.email);
+    assert.equal((await client().post('/api/auth/login', { email: DEMO_ACCOUNT.email, password: 'a-new-strong-pass' })).status, 200);
+
+    // A fresh server with sign-up closed still lets the owner make the first account, and only that one.
+    closeDb();
+    openDb(':memory:');
+    const first = await client().post('/api/auth/register', { business_name: 'Studio', name: 'Owner', email: 'first@test.example', password: 'password123' });
+    assert.equal(first.status, 201);
+    const second = await client().post('/api/auth/register', { business_name: 'Other', name: 'Other', email: 'second@test.example', password: 'password123' });
+    assert.equal(second.status, 403);
+  } finally {
+    delete process.env.ALLOW_SIGNUP;
+    delete process.env.DEMO_ACCOUNT;
+  }
 });

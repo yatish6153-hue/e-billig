@@ -154,11 +154,23 @@ Run behind HTTPS (nginx, Caddy, or a platform like Render or Railway) and set:
 | `PUBLIC_URL` | `https://billing.deveshstudio.com` | Base for invoice links sent on WhatsApp. Without it, local links like `http://localhost:3000/...` won't open for customers |
 | `TRUST_PROXY` | `true` | Behind a reverse proxy, so secure cookies and links are detected correctly |
 | `COOKIE_SECURE` | `true` | Session cookie is only sent over HTTPS |
-| `PORT` | `3000` | Port to listen on |
-| `DB_PATH` | `/var/lib/ebilling/ebilling.db` | Where the SQLite file lives (back this up) |
+| `PORT` | `3000` | Port to listen on (a host may set it for you) |
+| `DB_PATH` | `/var/lib/ebilling/ebilling.db` or `~/ebilling-data/ebilling.db` | Where the SQLite file lives (back this up). `~/` means the home folder |
 | `DEMO_ACCOUNT` | `false` / `true` | Force the demo login off or on |
+| `ALLOW_SIGNUP` | `false` | Closes **Create account** to strangers. The first account on an empty database can still be made |
 
-**Backups:** copy the database file while the app is stopped, or use `sqlite3 ebilling.db ".backup backup.db"` while it runs. Job photos and the logo are kept in the same file, so one backup has everything.
+With the demo login off, `demo@example.com` no longer opens with the public password `demo1234`. If you used that login for real bills, change its password in **Settings → Account** before you upload the database.
+
+**Moving your bills online:** `npm run export-db` writes `data/ebilling-upload.db`, a single-file copy of the database, safe to make while the app runs. It warns you if the demo password is still set. Upload that file as the live database.
+
+**Backups:** copy the database file while the app is stopped, or use `sqlite3 ebilling.db ".backup backup.db"` (or `npm run export-db`) while it runs. Job photos and the logo are kept in the same file, so one backup has everything.
+
+### Hostinger (Business or Cloud plan)
+
+1. **Websites → Add website → Node.js Web App**, on the subdomain `billing.deveshstudio.com`. It has to be its own website, not a folder of the main site.
+2. Upload a zip of this project without `node_modules`, `data`, `.git` and `test`. Hostinger runs `npm install` itself. Choose Node.js **24.x** (22.x also works), and set the entry file to `server/index.js`.
+3. Set the environment variables above. Use `DB_PATH=~/domains/billing.deveshstudio.com/ebilling-data/ebilling.db`. Every deploy replaces the app folder, so the database must sit outside it.
+4. Hostinger's documentation doesn't say whether that folder survives redeploys, so after the first redeploy check that your bills are still there. Keep regular backups too: download `ebilling.db` together with any `-wal` and `-shm` files beside it.
 
 ### Before real billing
 

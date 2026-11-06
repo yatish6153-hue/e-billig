@@ -29,7 +29,12 @@ export default async function authView(root, { mode, query, onAuthed }) {
         (all clearly marked <span class="badge badge-demo">Demo</span>).
         <div><button type="button" class="btn btn-sm" data-demo>${icon('eye')}Use demo account</button></div>
       </div>` : ''}
-    <p class="auth-switch">New here? <a href="/register">Create a free account</a></p>`;
+    ${config.signup === false ? '' : html`<p class="auth-switch">New here? <a href="/register">Create a free account</a></p>`}`;
+
+  const signupClosed = html`
+    <h2>New accounts are closed</h2>
+    <p class="sub">This eBilling is private. Please contact the owner for a login.</p>
+    <p class="auth-switch">Already have an account? <a href="/login">Sign in</a></p>`;
 
   const registerForm = html`
     <h2>Create your account</h2>
@@ -66,11 +71,11 @@ export default async function authView(root, { mode, query, onAuthed }) {
         </div>
         <div style="color:#bfdbfe;font-size:13px">Your business data is private to your account.</div>
       </section>
-      <section class="auth-main"><div class="auth-card">${mode === 'register' ? registerForm : loginForm}</div></section>
+      <section class="auth-main"><div class="auth-card">${mode !== 'register' ? loginForm : config.signup === false ? signupClosed : registerForm}</div></section>
     </div>`);
 
   const form = root.querySelector('form');
-  form.addEventListener('submit', async (e) => {
+  form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(form);
     const data = formData(form);
