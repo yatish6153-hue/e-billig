@@ -61,11 +61,11 @@ const NAV = [
   ['dashboard', '/dashboard', 'Dashboard', 'dashboard', 'dashboard'],
   ['bills', '/bills', 'Bills', 'bill', 'bills'],
   ['tracking', '/tracking', 'Tracking', 'kanban', 'tracking'],
-  ['bookings', '/bookings', 'Bookings & Shoots', 'camera', 'bookings'],
-  ['daybook', '/day-book', 'Day book', 'wallet', 'daybook'],
   ['products', '/products', 'Inventory', 'package', 'stock'],
   ['customers', '/customers', 'Customers', 'users', 'customers'],
   ['reports', '/reports', 'Reports', 'chart', 'reports'],
+  ['bookings', '/bookings', 'Bookings & Shoots', 'camera', 'bookings'],
+  ['daybook', '/day-book', 'Day book', 'wallet', 'daybook'],
   ['settings', '/settings', 'Settings', 'settings', 'settings'],
 ];
 
