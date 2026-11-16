@@ -2,7 +2,7 @@ import express from 'express';
 import { get, all, run, tx, nowIso } from '../db.js';
 import * as v from '../util.js';
 import { applyStockChange, serializeProduct, MOVEMENT_TYPES, LOW_STOCK_SQL } from '../services/inventory.js';
-import { getBusiness } from '../services/business.js';
+import { getBusiness, productCategories } from '../services/business.js';
 
 const router = express.Router();
 
@@ -85,10 +85,10 @@ router.get('/', (req, res) => {
   res.json({ products: rows.map(serializeProduct), total: n, limit, offset });
 });
 
+/** The categories (the owner's list, then any other the items use) with how many items each has, and the units used. */
 router.get('/categories', (req, res) => {
-  const rows = all("SELECT DISTINCT category FROM products WHERE business_id = ? AND category <> '' ORDER BY category COLLATE NOCASE", req.businessId);
   const units = all("SELECT DISTINCT unit FROM products WHERE business_id = ? AND unit <> '' ORDER BY unit", req.businessId);
-  res.json({ categories: rows.map((r) => r.category), units: units.map((r) => r.unit) });
+  res.json({ ...productCategories(req.businessId), units: units.map((r) => r.unit) });
 });
 
 /** Exact barcode / SKU match for scanner input. No match is a normal answer: { product: null }. */

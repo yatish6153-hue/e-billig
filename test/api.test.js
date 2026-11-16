@@ -1325,6 +1325,43 @@ test('day book: the owner’s own expense types; renaming one renames its saved 
   assert.equal((await c.get(`/api/day-book?from=${today}&to=${today}`)).data.entries.find((x) => x.details === 'Prints').category, 'Lab prints');
 });
 
+test('product categories: the owner’s list, renamed, added, removed and reordered in Settings', async () => {
+  const c = await newBusiness();
+  const frame = await newProduct(c, { category: 'Frames' });
+  const frame2 = await newProduct(c, { category: 'frames' });
+  const mug = await newProduct(c, { category: 'Mugs' });
+  const album = await newProduct(c, { category: 'Albums' });
+  const cats = async () => (await c.get('/api/products/categories')).data;
+  const before = await cats();
+  assert.deepEqual(before.categories, ['Albums', before.categories[1], 'Mugs'], 'the categories in use, A to Z, one per name whatever the case');
+  assert.equal(before.counts[before.categories[1]], 2);
+
+  const put = (body) => c.put('/api/settings/product-categories', body);
+  assert.equal((await put({})).status, 400);
+  assert.equal((await put({ categories: ['x'.repeat(61)] })).status, 400);
+
+  // Rename Frames (both spellings), drop Mugs, add Gifts (no items yet), keep Albums; in this order.
+  const saved = await put({ categories: ['Photo frames', 'Gifts', 'Albums'], renames: [{ from: 'Frames', to: 'Photo frames' }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.deepEqual(saved.data.categories, ['Photo frames', 'Gifts', 'Albums']);
+  assert.deepEqual(saved.data.counts, { 'Photo frames': 2, Gifts: 0, Albums: 1 });
+  const category = async (p) => (await c.get(`/api/products/${p.id}`)).data.product.category;
+  assert.equal(await category(frame), 'Photo frames');
+  assert.equal(await category(frame2), 'Photo frames');
+  assert.equal(await category(mug), '', 'a removed category comes off its items');
+  assert.equal(await category(album), 'Albums');
+
+  // A category typed on a new item shows after the owner's list.
+  await newProduct(c, { category: 'Cards' });
+  assert.deepEqual((await cats()).categories, ['Photo frames', 'Gifts', 'Albums', 'Cards']);
+
+  // Another business's list and items are its own.
+  const other = await newBusiness();
+  await other.put('/api/settings/product-categories', { categories: [], renames: [{ from: 'Albums', to: 'X' }] });
+  assert.equal(await category(album), 'Albums');
+  assert.deepEqual((await other.get('/api/products/categories')).data.categories, []);
+});
+
 test('static app shell, security headers and 404s', async () => {
   const res = await fetch(`${base}/bills/123`);
   assert.equal(res.status, 200);

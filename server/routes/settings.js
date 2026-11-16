@@ -2,7 +2,7 @@ import express from 'express';
 import { get, all, run, tx, nowIso } from '../db.js';
 import * as v from '../util.js';
 import { hashPassword } from '../auth.js';
-import { getBusiness, serializeBusiness } from '../services/business.js';
+import { getBusiness, serializeBusiness, productCategories } from '../services/business.js';
 import { CURRENCIES } from '../../shared/format.js';
 import { seedDemoCatalog, removeDemoData } from '../seed.js';
 import { mePayload, password } from './auth.js';
@@ -95,6 +95,41 @@ router.put('/expense-types', (req, res) => {
     run('UPDATE businesses SET expense_types = ?, updated_at = ? WHERE id = ?', JSON.stringify(types), nowIso(), req.businessId);
   });
   res.json({ business: serializeBusiness(getBusiness(req.businessId)) });
+});
+
+/**
+ * The product categories, as the owner wants them: renamed, added, removed or reordered. `renames` ([{ from, to }])
+ * also renames the category on its items; a category left off the list (and not renamed) is taken off its items.
+ * Names match without regard to case.
+ */
+router.put('/product-categories', (req, res) => {
+  const body = req.body || {};
+  if (!Array.isArray(body.categories)) throw v.badRequest('Send the list of categories.', 'categories');
+  const categories = [];
+  const seen = new Set();
+  for (const item of body.categories) {
+    const name = v.text(item, 'categories', 'Category', { max: 60 });
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    categories.push(name);
+  }
+  if (categories.length > 200) throw v.badRequest('Up to 200 categories.', 'categories');
+  const renames = (Array.isArray(body.renames) ? body.renames : [])
+    .map((r) => ({ from: v.text(r?.from, 'categories', 'Category', { max: 60 }), to: v.text(r?.to, 'categories', 'Category', { max: 60 }) }))
+    .filter((r) => r.from && r.to && r.from !== r.to);
+  const renamed = new Set(renames.map((r) => r.from.toLowerCase()));
+  const removed = productCategories(req.businessId).categories
+    .filter((c) => !seen.has(c.toLowerCase()) && !renamed.has(c.toLowerCase()));
+  tx(() => {
+    const now = nowIso();
+    // Renames in two steps, through a name no one can type, so swapping two names works too.
+    const set = `UPDATE products SET category = ?, updated_at = ? WHERE business_id = ? AND category = ? COLLATE NOCASE`;
+    renames.forEach((r, i) => run(set, `\u0001${i}`, now, req.businessId, r.from));
+    renames.forEach((r, i) => run(set, r.to, now, req.businessId, `\u0001${i}`));
+    removed.forEach((c) => run(set, '', now, req.businessId, c));
+    run('UPDATE businesses SET product_categories = ?, updated_at = ? WHERE id = ?', JSON.stringify(categories), now, req.businessId);
+  });
+  res.json(productCategories(req.businessId));
 });
 
 router.get('/logo', (req, res) => {

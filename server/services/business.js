@@ -1,5 +1,28 @@
-import { get } from '../db.js';
+import { get, all } from '../db.js';
 import { EXPENSE_CATEGORIES } from '../../shared/format.js';
+
+/**
+ * The product categories: the owner's list (in their order), then any other category an item uses, A to Z.
+ * Names match without regard to case. counts: how many items (archived too) are in each.
+ */
+export function productCategories(businessId) {
+  let saved = [];
+  try {
+    const list = JSON.parse(get('SELECT product_categories FROM businesses WHERE id = ?', businessId)?.product_categories || '[]');
+    if (Array.isArray(list)) saved = list.map(String);
+  } catch {
+    // A broken value: the categories the items use.
+  }
+  const used = all(
+    `SELECT category, COUNT(*) AS n FROM products WHERE business_id = ? AND category <> ''
+      GROUP BY category COLLATE NOCASE ORDER BY category COLLATE NOCASE`,
+    businessId,
+  );
+  const count = new Map(used.map((r) => [r.category.toLowerCase(), r.n]));
+  const seen = new Set(saved.map((c) => c.toLowerCase()));
+  const categories = [...saved, ...used.map((r) => r.category).filter((c) => !seen.has(c.toLowerCase()))];
+  return { categories, counts: Object.fromEntries(categories.map((c) => [c, count.get(c.toLowerCase()) || 0])) };
+}
 
 // Everything except the logo blob.
 export const BUSINESS_COLUMNS = `id, name, address, phone, email, website, gstin, logo_mime, logo_updated_at, currency,

@@ -450,6 +450,11 @@ const MIGRATIONS = [
   `
   ALTER TABLE businesses ADD COLUMN expense_types TEXT NOT NULL DEFAULT '';
   `,
+  // v18 — the owner's own list of product categories, in their order, as a JSON list. Categories the items use
+  // but the list doesn't have still show, after it.
+  `
+  ALTER TABLE businesses ADD COLUMN product_categories TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function openDb(file) {

@@ -942,7 +942,15 @@ a.tr-more { background: none; color: var(--primary); padding: 2px 4px; font-weig
 .ef-cat-head .inline-link .icon { width: 13px; height: 13px; }
 /* Editing the expense types. */
 .type-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; padding: 2px; }
-.type-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px; align-items: center; }
+.type-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 4px; align-items: center; }
+.type-note { white-space: nowrap; padding: 0 4px; min-width: 58px; text-align: right; }
+/* Settings: the lists the owner keeps (product categories, expense types), shown as chips. */
+.list-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.list-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-3); font-size: 13px; }
+.list-chip .muted { font-size: 12px; }
+.list-block + .list-block { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.list-block-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.list-block-head h4 { margin: 0; font-size: 14px; }
 .type-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 /* A week's or month's expenses by type. */
 .type-sum { border-top: 1px solid var(--border); }

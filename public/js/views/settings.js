@@ -1,5 +1,6 @@
 import { api } from '../lib/api.js';
-import { html, setHtml, formData } from '../lib/dom.js';
+import { html, setHtml, formData, on } from '../lib/dom.js';
+import { openNameListEditor, editExpenseTypes } from '../components/name-list.js';
 import { icon } from '../lib/icons.js';
 import { toast, toastError, confirmDialog, busy, showFormError, clearErrors, showFieldError, openModal, loading } from '../lib/ui.js';
 import { CURRENCIES, formatMoney, invoiceNumber } from '/shared/format.js';
@@ -120,6 +121,13 @@ export default async function settings(el, { app }) {
         <div class="sticky-actions"><button type="submit" class="btn btn-primary btn-lg">${icon('check')}Save settings</button></div>
       </form>
 
+      <section class="card" id="lists" style="margin-top:16px">
+        <div class="form-section">
+          <h3>Categories &amp; types</h3><p class="muted">The lists you pick from. Rename, add, remove or reorder them.</p>
+          <div data-lists>${loading()}</div>
+        </div>
+      </section>
+
       <section class="card" id="demo" style="margin-top:16px">
         <div class="form-section">
           <h3>Demo data</h3>
@@ -156,8 +164,81 @@ export default async function settings(el, { app }) {
       </section>`);
     bind();
     loadTeamLogins();
-    if (location.hash === '#demo') setTimeout(() => el.querySelector('#demo')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    loadLists();
+    if (location.hash === '#demo' || location.hash === '#lists') {
+      setTimeout(() => el.querySelector(location.hash)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    }
   }
+
+  // ---- Categories & types: the product categories and the day book's expense types ----
+  let lists = null;
+  async function loadLists() {
+    const box = el.querySelector('[data-lists]');
+    try {
+      lists = await api('/products/categories');
+      if (!box.isConnected) return;
+      renderLists(box);
+    } catch (err) {
+      if (box.isConnected) setHtml(box, html`<p class="text-bad">${err.message}</p>`);
+    }
+  }
+  const itemsText = (n) => (n ? `${n} item${n === 1 ? '' : 's'}` : 'No items');
+  function renderLists(box) {
+    const { categories, counts } = lists;
+    const types = app.business.expense_types || [];
+    setHtml(box, html`
+      <div class="list-block">
+        <div class="list-block-head"><h4>Product categories</h4>
+          <button type="button" class="btn btn-sm" data-edit-list="categories">${icon('edit', 'sm')}Edit categories</button></div>
+        <p class="muted small" style="margin:4px 0 0">For your products and services: in Inventory, and when you add or edit an item.</p>
+        <div class="list-chips">${categories.length ? categories.map((c) => html`<span class="list-chip">${c}<span class="muted">${counts[c] || 0}</span></span>`)
+          : html`<span class="muted small">No categories yet.</span>`}</div>
+      </div>
+      <div class="list-block">
+        <div class="list-block-head"><h4>Expense types</h4>
+          <button type="button" class="btn btn-sm" data-edit-list="expense">${icon('edit', 'sm')}Edit expense types</button></div>
+        <p class="muted small" style="margin:4px 0 0">What you pick from when you add an expense in the Day book.</p>
+        <div class="list-chips">${types.map((t) => html`<span class="list-chip">${t}</span>`)}</div>
+      </div>`);
+  }
+  function editCategories() {
+    const { categories, counts } = lists;
+    return openNameListEditor({
+      title: 'Product categories',
+      intro: 'Change a name and its items move with it. Removing a category takes it off its items (nothing else about them changes).',
+      names: categories,
+      max: 60,
+      placeholder: 'New category, e.g. Mugs',
+      saveText: 'Save categories',
+      allowEmpty: true,
+      note: (c) => itemsText(counts[c]),
+      beforeSave: ({ removed }) => {
+        const used = removed.filter((c) => counts[c]);
+        if (!used.length) return true;
+        const n = used.reduce((a, c) => a + counts[c], 0);
+        return confirmDialog({
+          title: used.length === 1 ? `Remove “${used[0]}”?` : `Remove ${used.length} categories?`,
+          message: `${used.join(', ')}: ${n} item${n === 1 ? '' : 's'} will have no category.`,
+          confirmText: 'Remove',
+          danger: true,
+        });
+      },
+      save: async ({ names, renames }) => {
+        const res = await api('/settings/product-categories', { method: 'PUT', body: { categories: names, renames } });
+        toast('Categories saved.');
+        return res;
+      },
+    });
+  }
+  on(el, 'click', '[data-edit-list]', async (e, b) => {
+    const box = el.querySelector('[data-lists]');
+    if (!lists || !box) return;
+    if (b.dataset.editList === 'categories') {
+      const res = await editCategories();
+      if (res) lists = { ...lists, ...res };
+    } else if (!(await editExpenseTypes(app))) return;
+    renderLists(box);
+  });
 
   function bind() {
     const form = el.querySelector('[data-settings]');

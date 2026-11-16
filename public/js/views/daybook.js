@@ -16,6 +16,7 @@ import {
 import { BOOKING_PAY_METHODS, timeRange, eventTitle, weekStart } from '/shared/bookings.js';
 import { bookingApi, statusBadge } from '../components/booking-ui.js';
 import { miniCalendar, monthRange, addMonths, shootsByDate, moneyByDate, calendarLegend } from '../components/mini-calendar.js';
+import { editExpenseTypes } from '../components/name-list.js';
 
 const WEEK = 7;
 const VIEWS = { day: 'Day', week: 'Week', month: 'Month' };
@@ -137,107 +138,6 @@ function readForm(form) {
     return null;
   }
   return { ...d, amount };
-}
-
-/**
- * Rename, add, remove or reorder the expense types. Renaming one renames it on the expenses already saved.
- * Resolves with { types, renames } once saved, or null.
- */
-function openTypesEditor(types) {
-  let rows = types.map((name) => ({ orig: name, name }));
-  return new Promise((resolve) => {
-    let result = null;
-    const modal = openModal({
-      title: 'Expense types',
-      form: true,
-      body: html`<p class="muted small" style="margin:0 0 12px">The types you pick from when you add an expense. Change a name and the
-          expenses already saved under it change too. A type you remove stays on its old expenses.</p>
-        <div class="type-list" data-type-list></div>
-        <div class="type-add"><input class="input" data-new-type maxlength="40" placeholder="New type, e.g. Courier" aria-label="New type">
-          <button type="button" class="btn" data-add-type>${icon('plus', 'sm')}Add</button></div>`,
-      footer: html`<button type="button" class="btn" data-close>Cancel</button>
-        <button type="submit" class="btn btn-primary">Save types</button>`,
-      onClose: () => resolve(result),
-      onSubmit: async (form, m, submitter) => {
-        clearErrors(form);
-        readNames();
-        const kept = rows.filter((r) => r.name);
-        const seen = new Map();
-        for (const r of kept) {
-          const key = r.name.toLowerCase();
-          if (seen.has(key)) {
-            toast(`“${r.name}” is on the list twice. Change or remove one.`, 'error');
-            return;
-          }
-          seen.set(key, true);
-        }
-        if (!kept.length) {
-          toast('Keep at least one type.', 'error');
-          return;
-        }
-        const body = {
-          types: kept.map((r) => r.name),
-          renames: kept.filter((r) => r.orig && r.orig !== r.name).map((r) => ({ from: r.orig, to: r.name })),
-        };
-        await busy(submitter, async () => {
-          try {
-            const res = await api('/settings/expense-types', { method: 'PUT', body });
-            result = { types: res.business.expense_types, renames: body.renames };
-            toast('Expense types saved.');
-            m.close();
-          } catch (err) {
-            showFormError(form, err);
-          }
-        });
-      },
-    });
-    const list = modal.el.querySelector('[data-type-list]');
-    const newType = modal.el.querySelector('[data-new-type]');
-    function readNames() {
-      list.querySelectorAll('[data-type-name]').forEach((input, i) => { rows[i].name = input.value.replace(/\s+/g, ' ').trim(); });
-    }
-    function paint() {
-      setHtml(list, html`${rows.map((r, i) => html`<div class="type-row">
-        <input class="input" data-type-name value="${r.name}" maxlength="40" aria-label="Type ${i + 1}">
-        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="-1" data-at="${i}" title="Move up" aria-label="Move ${r.name} up" ${i === 0 ? 'disabled' : ''}>${icon('chevronUp', 'sm')}</button>
-        <button type="button" class="btn btn-ghost btn-icon btn-sm btn-danger" data-remove-type="${i}" title="Remove" aria-label="Remove ${r.name}">${icon('trash', 'sm')}</button>
-      </div>`)}`);
-    }
-    function addType() {
-      const name = newType.value.replace(/\s+/g, ' ').trim();
-      if (!name) return newType.focus();
-      readNames();
-      if (rows.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
-        toast(`“${name}” is already on the list.`, 'info');
-        return newType.focus();
-      }
-      rows.push({ orig: null, name });
-      newType.value = '';
-      paint();
-      return newType.focus();
-    }
-    modal.el.addEventListener('click', (e) => {
-      const remove = e.target.closest('[data-remove-type]');
-      const move = e.target.closest('[data-move]');
-      if (remove) {
-        readNames();
-        rows.splice(Number(remove.dataset.removeType), 1);
-        paint();
-      } else if (move && !move.disabled) {
-        readNames();
-        const i = Number(move.dataset.at);
-        [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
-        paint();
-      } else if (e.target.closest('[data-add-type]')) addType();
-    });
-    // Enter in the new type's box adds it, rather than saving the list.
-    newType.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      addType();
-    });
-    paint();
-  });
 }
 
 export default async function dayBook(el, { app, query }) {
@@ -604,10 +504,9 @@ export default async function dayBook(el, { app, query }) {
 
   // Expense types: the owner's own list, edited from the Type field.
   on(el, 'click', '[data-edit-types]', async () => {
-    const res = await openTypesEditor(types);
+    const res = await editExpenseTypes(app);
     if (!res) return;
-    types = res.types;
-    app.business.expense_types = types.slice();
+    types = res.types.slice();
     const select = addForm.elements.namedItem('category');
     const was = select.value;
     const renamed = res.renames.find((r) => r.from === was)?.to;

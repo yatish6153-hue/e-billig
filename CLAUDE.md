@@ -134,6 +134,7 @@ The page also has a month calendar (`public/js/components/mini-calendar.js`, als
 - `lib/ui.js` has toasts, `openModal`, `confirmDialog`, `busy` and form-error helpers.
 - `isPhone()` (`lib/dom.js`) tells a phone or tablet from a computer. Phones get "Take photo" (the camera) beside "Gallery". WhatsApp links go through `whatsappLink` / `shareOnWhatsApp` (`components/share.js`): `https://wa.me/…` on a phone, `whatsapp://send?…` on a computer so the WhatsApp desktop app opens instead of a browser tab, with a toast offering WhatsApp Web if the app doesn't open. The customer's public pages keep wa.me.
 - The product form shows the name, stock, selling price and category; purchase price, unit, low-stock alert, SKU and barcode are under "More options".
+- Settings → Categories & types edits the product categories and the expense types with `components/name-list.js#openNameListEditor` (the day book's "Edit types" uses it too). Product categories (v18, `businesses.product_categories`, a JSON list) come from `services/business.js#productCategories`: the owner's list in their order, then any other category an item uses, matched without regard to case, with item counts; `/api/products/categories` returns them. `PUT /api/settings/product-categories` `{ categories, renames }` renames the category on its items and takes a category left off the list off its items.
 - Layouts adapt with container queries (`container: …` in `public/css/app.css`) as well as media queries.
 - `public/css/invoice.css` styles the bill and the public pages.
 
