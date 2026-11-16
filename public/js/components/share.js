@@ -1,5 +1,6 @@
 // Invoice sharing: secure link, clipboard, WhatsApp.
 import { api } from '../lib/api.js';
+import { html, isPhone } from '../lib/dom.js';
 import { copyText, toast } from '../lib/ui.js';
 import { formatMoney, formatDate, whatsappNumber } from '/shared/format.js';
 import { stageInfo } from '/shared/tracking.js';
@@ -50,18 +51,63 @@ export function statusMessage(business, bill, url) {
   return lines.join('\n');
 }
 
+/** "?phone=…&text=…" with whichever is given (%20 for spaces: the WhatsApp app doesn't read + as a space). */
+const sendQuery = (phone, text) => {
+  const q = [phone && `phone=${encodeURIComponent(phone)}`, text && `text=${encodeURIComponent(text)}`].filter(Boolean).join('&');
+  return q ? `?${q}` : '';
+};
+
+/** A WhatsApp Web link to the number (or, without one, to choose the chat), with the message filled in. */
+const webLink = (phone, text) => `https://web.whatsapp.com/send${sendQuery(phone, text)}`;
+
 /**
- * Opens WhatsApp with a prefilled message. The window is opened synchronously
- * (before any await) so pop-up blockers allow it, then pointed at WhatsApp.
+ * A link that opens WhatsApp. On a phone, wa.me opens the WhatsApp app. On a computer wa.me only opens a page in
+ * the browser, so it's the whatsapp:// link the WhatsApp desktop app (Windows or Mac) answers to.
+ */
+export function whatsappLink(phone, text = '') {
+  if (isPhone()) return `https://wa.me/${phone}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+  return `whatsapp://send${sendQuery(phone, text)}`;
+}
+
+/**
+ * Open the WhatsApp desktop app. If this page still has the focus a moment later, the app didn't open (it isn't
+ * installed, or the browser asked first), so offer WhatsApp Web instead.
+ */
+export function openWhatsAppApp(phone, text = '') {
+  let left = false;
+  const onBlur = () => { left = true; };
+  window.addEventListener('blur', onBlur, { once: true });
+  const a = document.createElement('a');
+  a.href = whatsappLink(phone, text);
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => {
+    window.removeEventListener('blur', onBlur);
+    if (left || document.hidden) return;
+    toast(html`WhatsApp app didn’t open? Install WhatsApp for your computer, or
+      <a href="${webLink(phone, text)}" target="_blank" rel="noopener noreferrer">open WhatsApp Web</a>.`, 'info', { timeout: 10000 });
+  }, 2500);
+}
+
+/**
+ * Opens WhatsApp with a prefilled message: the app on a phone (wa.me, in a window opened synchronously, before any
+ * await, so pop-up blockers allow it) and the WhatsApp desktop app on a computer.
  * Demo customers are never auto-targeted — their numbers are samples.
  */
 export async function shareOnWhatsApp(business, bill, { customerIsDemo = false, message = shareMessage } = {}) {
-  const win = window.open('', '_blank');
+  const phoneApp = isPhone();
+  const win = phoneApp ? window.open('', '_blank') : null;
   try {
     const url = await ensureShareUrl(bill);
     const phone = customerIsDemo ? '' : whatsappNumber(bill.customer_phone, bill.currency);
-    const text = encodeURIComponent(message(business, bill, url));
-    const target = `https://wa.me/${phone}?text=${text}`;
+    const text = message(business, bill, url);
+    if (!phoneApp) {
+      openWhatsAppApp(phone, text);
+      return url;
+    }
+    const target = whatsappLink(phone, text);
     if (win) {
       win.opener = null;
       win.location.href = target;

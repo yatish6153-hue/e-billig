@@ -446,6 +446,10 @@ const MIGRATIONS = [
   `
   ALTER TABLE businesses ADD COLUMN website TEXT NOT NULL DEFAULT '';
   `,
+  // v17 — the owner's own expense types for the day book, as a JSON list ('' = the standard list).
+  `
+  ALTER TABLE businesses ADD COLUMN expense_types TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function openDb(file) {

@@ -2,7 +2,7 @@
 // here before it's sent (up to 1600 px, with a 360 px copy for lists). It can come from the camera, the gallery, or on
 // a computer a paste (Ctrl+V) or a drop. openPhotos shows a job's photos one big at a time, to add more or remove one.
 import { api } from '../lib/api.js';
-import { html, setHtml } from '../lib/dom.js';
+import { html, setHtml, isPhone } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { openModal, confirmDialog, toast, toastError } from '../lib/ui.js';
 
@@ -12,7 +12,7 @@ const SMALL = 360;
 const MAX_BYTES = 1100 * 1024;
 
 /** Phones and tablets get a "Take photo" button that opens the camera. */
-export const hasCamera = () => matchMedia('(pointer: coarse)').matches;
+export const hasCamera = isPhone;
 
 /** The image drawn at most max px on its long side, as a JPEG data URL (white behind any transparency). */
 function scaled(img, max, quality) {

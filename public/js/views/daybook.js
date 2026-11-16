@@ -1,6 +1,8 @@
 // The day book. Every evening: add sales made without a bill, money that came in, and where you paid.
 // Bills count on their own, so the day's closing (sales, money in, money out, net cash) fills itself in.
 // Money received for a bill is recorded on that bill, so its balance goes down.
+// Day, Week and Month: a week or a month shows the closing for all of it, day by day, and the expenses by type.
+// Expense types are the owner's own: rename, add or remove them from the Type field.
 // Beside it, a month calendar marks the dates with shoots booked; tap a date to open it and see its shoots.
 import { api } from '../lib/api.js';
 import { html, setHtml, on, formData } from '../lib/dom.js';
@@ -11,11 +13,40 @@ import { moneyInput } from '../components/product-form.js';
 import {
   DAY_ENTRY_KINDS, EXPENSE_CATEGORIES, PAYMENT_METHODS, formatDate, formatMoney, isoDate, addDays, toMinor, fromMinor,
 } from '/shared/format.js';
-import { BOOKING_PAY_METHODS, timeRange, eventTitle } from '/shared/bookings.js';
+import { BOOKING_PAY_METHODS, timeRange, eventTitle, weekStart } from '/shared/bookings.js';
 import { bookingApi, statusBadge } from '../components/booking-ui.js';
 import { miniCalendar, monthRange, addMonths, shootsByDate, moneyByDate, calendarLegend } from '../components/mini-calendar.js';
 
 const WEEK = 7;
+const VIEWS = { day: 'Day', week: 'Week', month: 'Month' };
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthName = (iso) => `${MONTH_NAMES[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+
+/** The last date of the month a date is in. */
+function monthEnd(iso) {
+  const [y, m] = iso.split('-').map(Number);
+  return isoDate(new Date(y, m, 0));
+}
+
+/** The days a view covers: a day, Monday to Sunday, or the 1st to the month's end. `to` stops at today. */
+function periodOf(view, day, today) {
+  let from = day;
+  let end = day;
+  if (view === 'week') {
+    from = weekStart(day);
+    end = addDays(from, 6);
+  } else if (view === 'month') {
+    from = `${day.slice(0, 7)}-01`;
+    end = monthEnd(day);
+  }
+  return { from, end, to: end < today ? end : today };
+}
+
+/** Sales, money in and out over some days added up. */
+function sumDays(days) {
+  const keys = ['bills', 'sales', 'sales_added', 'received_cash', 'received_online', 'spent_cash', 'spent_online'];
+  return Object.fromEntries(keys.map((k) => [k, days.reduce((a, d) => a + d[k], 0)]));
+}
 
 const KINDS = {
   sale: {
@@ -37,8 +68,17 @@ function kindTabs(kind) {
     <button type="button" role="tab" data-kind="${k}" class="${k === kind ? 'active' : ''}" aria-selected="${k === kind}">${label}</button>`)}</div>`;
 }
 
+/** The Type options: the business's own list, plus an older expense's type that's no longer on it. */
+function typeOptions(types, selected) {
+  const list = !selected || types.includes(selected) ? types : [...types, selected];
+  return html`${list.map((c) => html`<option ${c === selected ? 'selected' : ''}>${c}</option>`)}`;
+}
+
+/** The type a new expense starts with: Other, if it's on the list, or else the first type. */
+const defaultType = (types) => (types.includes('Other') ? 'Other' : types[0]);
+
 /** The fields for any entry. Fields marked data-only show for that kind alone; "For bill" only on the add form. */
-function entryFields(x, currency, unpaid = null) {
+function entryFields(x, currency, types, { unpaid = null, editTypes = false } = {}) {
   const k = KINDS[x.kind];
   return html`
     <input type="hidden" name="kind" value="${x.kind}">
@@ -48,8 +88,9 @@ function entryFields(x, currency, unpaid = null) {
     <div class="field ef-details"><label data-details-label>${k.details}</label>
       <input class="input" name="details" maxlength="120" value="${x.details}" placeholder="${k.placeholder}"></div>
     <div class="field ef-amount"><label>Amount <span class="req">*</span></label>${moneyInput('amount', x.amount, currency, 'required')}</div>
-    <div class="field ef-cat" data-only="expense"><label>Type</label>
-      <select class="input" name="category">${EXPENSE_CATEGORIES.map((c) => html`<option ${c === x.category ? 'selected' : ''}>${c}</option>`)}</select></div>
+    <div class="field ef-cat" data-only="expense"><div class="ef-cat-head"><label for="ef-category-${editTypes ? 'add' : 'edit'}">Type</label>
+        ${editTypes ? html`<button type="button" class="inline-link small" data-edit-types>${icon('edit', 'sm')}Edit types</button>` : ''}</div>
+      <select class="input" id="ef-category-${editTypes ? 'add' : 'edit'}" name="category">${typeOptions(types, x.category)}</select></div>
     <div class="field ef-method"><span class="label">Cash or online</span>${methodButtons(x.method)}<input type="hidden" name="method" value="${x.method}"></div>`;
 }
 
@@ -98,15 +139,118 @@ function readForm(form) {
   return { ...d, amount };
 }
 
+/**
+ * Rename, add, remove or reorder the expense types. Renaming one renames it on the expenses already saved.
+ * Resolves with { types, renames } once saved, or null.
+ */
+function openTypesEditor(types) {
+  let rows = types.map((name) => ({ orig: name, name }));
+  return new Promise((resolve) => {
+    let result = null;
+    const modal = openModal({
+      title: 'Expense types',
+      form: true,
+      body: html`<p class="muted small" style="margin:0 0 12px">The types you pick from when you add an expense. Change a name and the
+          expenses already saved under it change too. A type you remove stays on its old expenses.</p>
+        <div class="type-list" data-type-list></div>
+        <div class="type-add"><input class="input" data-new-type maxlength="40" placeholder="New type, e.g. Courier" aria-label="New type">
+          <button type="button" class="btn" data-add-type>${icon('plus', 'sm')}Add</button></div>`,
+      footer: html`<button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save types</button>`,
+      onClose: () => resolve(result),
+      onSubmit: async (form, m, submitter) => {
+        clearErrors(form);
+        readNames();
+        const kept = rows.filter((r) => r.name);
+        const seen = new Map();
+        for (const r of kept) {
+          const key = r.name.toLowerCase();
+          if (seen.has(key)) {
+            toast(`“${r.name}” is on the list twice. Change or remove one.`, 'error');
+            return;
+          }
+          seen.set(key, true);
+        }
+        if (!kept.length) {
+          toast('Keep at least one type.', 'error');
+          return;
+        }
+        const body = {
+          types: kept.map((r) => r.name),
+          renames: kept.filter((r) => r.orig && r.orig !== r.name).map((r) => ({ from: r.orig, to: r.name })),
+        };
+        await busy(submitter, async () => {
+          try {
+            const res = await api('/settings/expense-types', { method: 'PUT', body });
+            result = { types: res.business.expense_types, renames: body.renames };
+            toast('Expense types saved.');
+            m.close();
+          } catch (err) {
+            showFormError(form, err);
+          }
+        });
+      },
+    });
+    const list = modal.el.querySelector('[data-type-list]');
+    const newType = modal.el.querySelector('[data-new-type]');
+    function readNames() {
+      list.querySelectorAll('[data-type-name]').forEach((input, i) => { rows[i].name = input.value.replace(/\s+/g, ' ').trim(); });
+    }
+    function paint() {
+      setHtml(list, html`${rows.map((r, i) => html`<div class="type-row">
+        <input class="input" data-type-name value="${r.name}" maxlength="40" aria-label="Type ${i + 1}">
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="-1" data-at="${i}" title="Move up" aria-label="Move ${r.name} up" ${i === 0 ? 'disabled' : ''}>${icon('chevronUp', 'sm')}</button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm btn-danger" data-remove-type="${i}" title="Remove" aria-label="Remove ${r.name}">${icon('trash', 'sm')}</button>
+      </div>`)}`);
+    }
+    function addType() {
+      const name = newType.value.replace(/\s+/g, ' ').trim();
+      if (!name) return newType.focus();
+      readNames();
+      if (rows.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
+        toast(`“${name}” is already on the list.`, 'info');
+        return newType.focus();
+      }
+      rows.push({ orig: null, name });
+      newType.value = '';
+      paint();
+      return newType.focus();
+    }
+    modal.el.addEventListener('click', (e) => {
+      const remove = e.target.closest('[data-remove-type]');
+      const move = e.target.closest('[data-move]');
+      if (remove) {
+        readNames();
+        rows.splice(Number(remove.dataset.removeType), 1);
+        paint();
+      } else if (move && !move.disabled) {
+        readNames();
+        const i = Number(move.dataset.at);
+        [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
+        paint();
+      } else if (e.target.closest('[data-add-type]')) addType();
+    });
+    // Enter in the new type's box adds it, rather than saving the list.
+    newType.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      addType();
+    });
+    paint();
+  });
+}
+
 export default async function dayBook(el, { app, query }) {
   app.setTitle('Day book');
   const money = (v) => app.money(v);
   const currency = app.business.currency;
   const today = isoDate();
   let day = /^\d{4}-\d{2}-\d{2}$/.test(String(query.date || '')) && query.date <= today ? query.date : today;
+  let view = VIEWS[query.view] ? query.view : 'day';
   let kind = DAY_ENTRY_KINDS[query.add] ? query.add : 'sale';
+  let types = app.business.expense_types?.length ? app.business.expense_types.slice() : EXPENSE_CATEGORIES.slice();
   let list = null;
-  let week = [];
+  let days = [];
   let unpaid = [];
   let loadSeq = 0;
   // The calendar: the month shown, the date picked (any date; past ones also open in the day book), its shoots.
@@ -117,33 +261,50 @@ export default async function dayBook(el, { app, query }) {
   let calSeq = 0;
   const dayName = (d) => (d === today ? 'today' : formatDate(d));
   const onDay = (d) => (d === today ? 'today' : `on ${formatDate(d)}`);
+  const period = () => periodOf(view, day, today);
+  /** "Today", "This week", "Week of 09 Nov 2026", "This month", "October 2026"… */
+  function periodTitle() {
+    const p = period();
+    if (view === 'day') return day === today ? 'Today' : formatDate(day);
+    if (view === 'week') return p.end >= today ? 'This week' : `Week of ${formatDate(p.from)}`;
+    return p.end >= today ? 'This month' : monthName(p.from);
+  }
+  function periodRange() {
+    const p = period();
+    if (view === 'day') return formatDate(day);
+    if (view === 'week') return `${formatDate(p.from)} – ${formatDate(p.end)}`;
+    return monthName(p.from);
+  }
 
   try {
     unpaid = (await api('/bills', { query: { payment: 'due', limit: 100 } })).bills;
   } catch {
     // Without the list, money received is simply not linked to a bill.
   }
+  if (!el.isConnected) return;
 
   setHtml(el, html`
     <div class="page-header">
       <div><h1>Day book</h1><div class="subtitle">Every evening: add sales without a bill, money that came in, and where you paid. Bills and booking payments are counted on their own.</div></div>
     </div>
     <div class="day-nav">
-      <button type="button" class="btn btn-icon" data-step="-1" aria-label="Previous day" title="Previous day">${icon('arrowLeft')}</button>
+      <div class="segmented db-views" role="tablist" aria-label="Show">${Object.entries(VIEWS).map(([k, label]) => html`
+        <button type="button" role="tab" data-view="${k}" class="${k === view ? 'active' : ''}" aria-selected="${k === view}">${label}</button>`)}</div>
+      <button type="button" class="btn btn-icon" data-step="-1" aria-label="Previous" title="Previous">${icon('arrowLeft')}</button>
       <input class="input date-input" type="date" data-day value="${day}" max="${today}" aria-label="Day">
-      <button type="button" class="btn btn-icon" data-step="1" aria-label="Next day" title="Next day">${icon('arrowRight')}</button>
+      <button type="button" class="btn btn-icon" data-step="1" aria-label="Next" title="Next">${icon('arrowRight')}</button>
       <button type="button" class="btn btn-sm" data-today>Today</button>
     </div>
     <div class="db-layout">
     <section class="card closing" data-closing>${loading()}</section>
     <aside class="card db-cal" data-cal aria-label="Calendar">${loading()}</aside>
-    <section class="card db-add">
+    <section class="card db-add" data-add-card>
       <div class="card-header"><h2 data-add-title>Add for today</h2></div>
       <form class="card-body entry-form" data-add novalidate>
         ${kindTabs(kind)}
         <p class="muted small kind-hint" data-kind-hint>${KINDS[kind].hint}</p>
         <div class="entry-fields">
-          ${entryFields({ kind, details: '', amount: '', category: 'Other', method: 'cash' }, currency, unpaid)}
+          ${entryFields({ kind, details: '', amount: '', category: defaultType(types), method: 'cash' }, currency, types, { unpaid, editTypes: true })}
           <button type="submit" class="btn btn-primary ef-add">${icon('plus')}<span data-add-label>${KINDS[kind].add}</span></button>
         </div>
       </form>
@@ -153,7 +314,7 @@ export default async function dayBook(el, { app, query }) {
       <div data-list></div>
     </section>
     <section class="card db-week">
-      <div class="card-header"><h2>Last 7 days</h2><span class="hint">Tap a day to open it</span></div>
+      <div class="card-header"><h2 data-week-title>Last 7 days</h2><span class="hint" data-week-hint>Tap a day to open it</span></div>
       <div data-week></div>
     </section>
     </div>`);
@@ -182,15 +343,19 @@ export default async function dayBook(el, { app, query }) {
   async function load() {
     const seq = ++loadSeq;
     el.querySelectorAll('[data-closing], [data-list], [data-week]').forEach((x) => { x.style.opacity = '0.6'; });
+    const p = period();
     try {
-      const [res, days] = await Promise.all([
-        api('/day-book', { query: { from: day, to: day } }),
-        api('/day-book/days', { query: { from: addDays(day, -(WEEK - 1)), to: day } }),
+      const [res, book] = await Promise.all([
+        api('/day-book', { query: { from: p.from, to: p.to } }),
+        api('/day-book/days', { query: view === 'day' ? { from: addDays(day, -(WEEK - 1)), to: day } : { from: p.from, to: p.to } }),
       ]);
-      if (seq !== loadSeq) return;
+      if (seq !== loadSeq || !el.isConnected) return;
       list = res;
-      week = days.days;
-      history.replaceState(null, '', day === today ? '/day-book' : `/day-book?date=${day}`);
+      days = book.days;
+      const params = new URLSearchParams();
+      if (view !== 'day') params.set('view', view);
+      if (day !== today) params.set('date', day);
+      history.replaceState(null, '', `/day-book${String(params) ? `?${params}` : ''}`);
       render();
     } catch (err) {
       toastError(err);
@@ -200,14 +365,38 @@ export default async function dayBook(el, { app, query }) {
   }
 
   function render() {
+    const p = period();
+    const unit = view === 'day' ? 'day' : view;
+    el.querySelector('.db-layout').classList.toggle('is-period', view !== 'day');
+    el.querySelectorAll('[data-view]').forEach((b) => {
+      b.classList.toggle('active', b.dataset.view === view);
+      b.setAttribute('aria-selected', String(b.dataset.view === view));
+    });
     el.querySelector('[data-day]').value = day;
-    el.querySelector('[data-step="1"]').disabled = day >= today;
-    el.querySelector('[data-today]').hidden = day === today;
+    const prev = el.querySelector('[data-step="-1"]');
+    const next = el.querySelector('[data-step="1"]');
+    prev.title = `Previous ${unit}`;
+    prev.setAttribute('aria-label', `Previous ${unit}`);
+    next.title = `Next ${unit}`;
+    next.setAttribute('aria-label', `Next ${unit}`);
+    next.disabled = p.end >= today;
+    el.querySelector('[data-today]').hidden = p.end >= today && p.from <= today;
+    el.querySelector('[data-add-card]').hidden = view !== 'day';
     el.querySelector('[data-add-title]').textContent = `Add for ${dayName(day)}`;
-    el.querySelector('[data-list-title]').textContent = day === today ? 'Today' : formatDate(day);
     renderClosing();
-    renderList();
-    renderWeek();
+    if (view === 'day') {
+      el.querySelector('[data-list-title]').textContent = periodTitle();
+      el.querySelector('[data-week-title]').textContent = 'Last 7 days';
+      el.querySelector('[data-week-hint]').textContent = 'Tap a day to open it';
+      renderList();
+      renderDayTable(el.querySelector('[data-week]'), days, '7 days');
+    } else {
+      el.querySelector('[data-list-title]').textContent = 'Day by day';
+      el.querySelector('[data-list-total]').textContent = 'Tap a day to open it';
+      el.querySelector('[data-week-title]').textContent = 'Expenses by type';
+      renderDayTable(el.querySelector('[data-list]'), days, periodTitle());
+      renderTypes();
+    }
     // The calendar follows the day that's open (and is re-read, so new entries show).
     calDay = day;
     calMonth = day.slice(0, 7);
@@ -236,30 +425,31 @@ export default async function dayBook(el, { app, query }) {
   }
 
   function renderCalendar() {
-    const list = shoots.get(calDay) || [];
+    const shootList = shoots.get(calDay) || [];
     setHtml(calBox, html`
       <div class="card-header"><h2 class="bk-h-icon">${icon('calendar')}Calendar</h2><span class="hint">Shoots and day book days</span></div>
       <div class="card-body db-cal-body">${miniCalendar({ month: calMonth, selected: calDay, today, shoots, money: dayMoney })}${calendarLegend()}</div>
       <div class="mc-list">
-        <div class="mc-list-head"><span class="label">${list.length ? `Shoots ${onDay(calDay)}` : `No shoots booked ${onDay(calDay)}`}</span>
+        <div class="mc-list-head"><span class="label">${shootList.length ? `Shoots ${onDay(calDay)}` : `No shoots booked ${onDay(calDay)}`}</span>
           <a class="inline-link small mc-new" href="/bookings/new?date=${calDay}">${icon('plus', 'sm')}New booking</a></div>
-        ${list.map(({ b, day: d }) => html`<a class="mc-shoot" href="/bookings/${b.id}">
+        ${shootList.map(({ b, day: d }) => html`<a class="mc-shoot" href="/bookings/${b.id}">
           <span class="mc-time">${timeRange(d) || 'All day'}</span>
           <span class="mc-main"><b>${b.client_name}</b><span class="muted small">${[eventTitle(b), d.venue].filter(Boolean).join(' · ')}</span></span>
           ${statusBadge(b.status)}</a>`)}
       </div>`);
   }
 
-  /** The chosen day: sales, money received, money spent and the cash left from the day. */
+  /** The day, week or month: sales, money received, money spent and the cash left from it. */
   function renderClosing() {
-    const d = week[0];
+    const d = view === 'day' ? days[0] : sumDays(days);
     const received = d.received_cash + d.received_online;
     const spent = d.spent_cash + d.spent_online;
     const net = d.received_cash - d.spent_cash;
     const billsText = `${d.bills} bill${d.bills === 1 ? '' : 's'}`;
+    const hint = view === 'day' ? (day === today ? formatDate(day) : '') : periodRange();
     setHtml(el.querySelector('[data-closing]'), html`
-      <div class="card-header"><h2>Closing · ${day === today ? 'Today' : formatDate(day)}</h2>
-        ${day === today ? html`<span class="hint">${formatDate(day)}</span>` : ''}</div>
+      <div class="card-header"><h2>Closing · ${periodTitle()}</h2>
+        ${hint && hint !== periodTitle() ? html`<span class="hint">${hint}</span>` : ''}</div>
       <div class="closing-grid">
         <div class="cl"><div class="cl-label">Sales</div><div class="cl-value">${money(d.sales)}</div>
           <div class="cl-sub">${d.sales_added ? `${billsText} + ${money(d.sales_added)} without a bill` : billsText}</div></div>
@@ -324,8 +514,8 @@ export default async function dayBook(el, { app, query }) {
     </div>`);
   }
 
-  function renderWeek() {
-    const total = (key) => week.reduce((a, d) => a + d[key], 0);
+  /** One row a day (newest first) with the total underneath; tapping a day opens it. */
+  function renderDayTable(box, rows, footLabel) {
     const cells = (d) => {
       const net = d.received_cash - d.spent_cash;
       return html`
@@ -334,28 +524,64 @@ export default async function dayBook(el, { app, query }) {
         <td class="r" data-label="Expenses">${money(d.spent_cash + d.spent_online)}</td>
         <td class="r ${net < 0 ? 'text-bad' : ''}" data-label="Net cash">${money(net)}</td>`;
     };
-    const sums = {
-      sales: total('sales'), received_cash: total('received_cash'), received_online: total('received_online'),
-      spent_cash: total('spent_cash'), spent_online: total('spent_online'),
-    };
-    setHtml(el.querySelector('[data-week]'), html`<div class="table-wrap"><table class="table stack-mobile week-table">
+    const quiet = (d) => !d.sales && !d.received_cash && !d.received_online && !d.spent_cash && !d.spent_online;
+    setHtml(box, html`<div class="table-wrap"><table class="table stack-mobile week-table">
       <thead><tr><th>Day</th><th class="r">Sales</th><th class="r">Received</th><th class="r">Expenses</th><th class="r">Net cash</th></tr></thead>
-      <tbody>${week.map((d) => html`
-        <tr class="clickable ${d.date === day ? 'is-selected' : ''}" data-date="${d.date}">
+      <tbody>${rows.map((d) => html`
+        <tr class="clickable ${view === 'day' && d.date === day ? 'is-selected' : ''} ${view !== 'day' && quiet(d) ? 'is-quiet' : ''}" data-date="${d.date}">
           <td class="td-main"><span class="cell-main">${d.date === today ? 'Today' : formatDate(d.date)}</span></td>${cells(d)}</tr>`)}</tbody>
-      <tfoot><tr><td class="td-main">7 days</td>${cells(sums)}</tr></tfoot>
+      <tfoot><tr><td class="td-main">${footLabel}</td>${cells(sumDays(rows))}</tr></tfoot>
     </table></div>`);
+  }
+
+  /** A week's or month's expenses, by type, biggest first. */
+  function renderTypes() {
+    const byType = new Map();
+    for (const x of list.entries) {
+      if (x.kind !== 'expense') continue;
+      const t = byType.get(x.category) || { name: x.category || 'Other', count: 0, amount: 0 };
+      t.count++;
+      t.amount += x.amount;
+      byType.set(x.category, t);
+    }
+    const rows = [...byType.values()].sort((a, b) => b.amount - a.amount);
+    const total = rows.reduce((a, t) => a + t.amount, 0);
+    el.querySelector('[data-week-hint]').textContent = total ? money(total) : '';
+    if (!rows.length) {
+      setHtml(el.querySelector('[data-week]'), html`<p class="muted entry-empty">No expenses ${view === 'week' ? 'this week' : 'this month'}.</p>`);
+      return;
+    }
+    setHtml(el.querySelector('[data-week]'), html`<div class="type-sum">${rows.map((t) => html`
+      <div class="type-sum-row">
+        <div class="type-sum-main"><span class="strong">${t.name}</span><span class="muted small">${t.count} expense${t.count === 1 ? '' : 's'}</span></div>
+        <div class="type-sum-bar" aria-hidden="true"><span style="width:${Math.max(2, Math.round((t.amount / total) * 100))}%"></span></div>
+        <div class="type-sum-amount">${money(t.amount)}</div>
+      </div>`)}
+      <div class="entry-total"><span>${periodTitle()}</span><span class="text-bad">${money(total)}</span></div>
+    </div>`);
   }
 
   function setDay(d) {
     day = d && d <= today ? d : today;
     load();
   }
+  function setView(v) {
+    view = v;
+    load();
+  }
+  function step(by) {
+    if (view === 'week') return setDay(addDays(day, WEEK * by));
+    if (view === 'month') return setDay(`${addMonths(day.slice(0, 7), by)}-01`);
+    return setDay(addDays(day, by));
+  }
 
   // A past date (or today) opens in the day book; a later one just shows its shoots.
   on(el, 'click', '[data-mc-day]', (e, b) => {
     const d = b.dataset.mcDay;
-    if (d <= today) return setDay(d);
+    if (d <= today) {
+      view = 'day';
+      return setDay(d);
+    }
     calDay = d;
     if (d.slice(0, 7) !== calMonth) {
       calMonth = d.slice(0, 7);
@@ -367,10 +593,28 @@ export default async function dayBook(el, { app, query }) {
     calMonth = addMonths(calMonth, Number(b.dataset.mcStep));
     loadCalendar();
   });
-  on(el, 'click', '[data-step]', (e, b) => setDay(addDays(day, Number(b.dataset.step))));
+  on(el, 'click', '[data-view]', (e, b) => { if (b.dataset.view !== view) setView(b.dataset.view); });
+  on(el, 'click', '[data-step]', (e, b) => step(Number(b.dataset.step)));
   on(el, 'click', '[data-today]', () => setDay(today));
-  on(el, 'click', '[data-date]', (e, tr) => setDay(tr.dataset.date));
+  on(el, 'click', '[data-date]', (e, tr) => {
+    view = 'day';
+    setDay(tr.dataset.date);
+  });
   el.querySelector('[data-day]').addEventListener('change', (e) => setDay(e.target.value));
+
+  // Expense types: the owner's own list, edited from the Type field.
+  on(el, 'click', '[data-edit-types]', async () => {
+    const res = await openTypesEditor(types);
+    if (!res) return;
+    types = res.types;
+    app.business.expense_types = types.slice();
+    const select = addForm.elements.namedItem('category');
+    const was = select.value;
+    const renamed = res.renames.find((r) => r.from === was)?.to;
+    const keep = renamed || (types.includes(was) ? was : defaultType(types));
+    setHtml(select, typeOptions(types, keep));
+    if (res.renames.length) await load();
+  });
 
   addForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -413,7 +657,7 @@ export default async function dayBook(el, { app, query }) {
       body: html`${kindTabs(x.kind)}
         <div class="form-grid entry-form" style="margin-top:14px">
           <div class="field span-all"><label>Date</label><input class="input" type="date" name="entry_date" value="${x.entry_date}" max="${today}" required></div>
-          ${entryFields({ ...x, category: x.category || 'Other', amount: fromMinor(x.amount) }, currency)}</div>`,
+          ${entryFields({ ...x, category: x.category || defaultType(types), amount: fromMinor(x.amount) }, currency, types)}</div>`,
       footer: html`<button type="button" class="btn" data-close>Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>`,
       onSubmit: async (form, m, submitter) => {
@@ -454,5 +698,5 @@ export default async function dayBook(el, { app, query }) {
   });
 
   await load();
-  if (query.add) addForm.elements.namedItem('details').focus();
+  if (query.add && view === 'day') addForm.elements.namedItem('details').focus();
 }

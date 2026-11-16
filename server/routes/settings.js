@@ -67,6 +67,36 @@ router.put('/', (req, res) => {
   res.json({ business: serializeBusiness(getBusiness(req.businessId)) });
 });
 
+/**
+ * The day book's expense types, as the owner wants them: renamed, added, removed or reordered. `renames`
+ * ([{ from, to }]) also renames the type on the expenses already saved; a removed type stays on its old expenses.
+ */
+router.put('/expense-types', (req, res) => {
+  const body = req.body || {};
+  if (!Array.isArray(body.types)) throw v.badRequest('Send the list of expense types.', 'types');
+  const types = [];
+  const seen = new Set();
+  for (const item of body.types) {
+    const name = v.text(item, 'types', 'Expense type', { max: 40 });
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    types.push(name);
+  }
+  if (!types.length) throw v.badRequest('Keep at least one expense type.', 'types');
+  if (types.length > 50) throw v.badRequest('Up to 50 expense types.', 'types');
+  const renames = (Array.isArray(body.renames) ? body.renames : [])
+    .map((r) => ({ from: v.text(r?.from, 'types', 'Expense type', { max: 40 }), to: v.text(r?.to, 'types', 'Expense type', { max: 40 }) }))
+    .filter((r) => r.from && r.to && r.from !== r.to);
+  tx(() => {
+    // In two steps, through a name no one can type, so swapping two names works too.
+    const step = `UPDATE day_entries SET category = ?, updated_at = ? WHERE business_id = ? AND kind = 'expense' AND category = ?`;
+    renames.forEach((r, i) => run(step, `\u0001${i}`, nowIso(), req.businessId, r.from));
+    renames.forEach((r, i) => run(step, r.to, nowIso(), req.businessId, `\u0001${i}`));
+    run('UPDATE businesses SET expense_types = ?, updated_at = ? WHERE id = ?', JSON.stringify(types), nowIso(), req.businessId);
+  });
+  res.json({ business: serializeBusiness(getBusiness(req.businessId)) });
+});
+
 router.get('/logo', (req, res) => {
   const row = get('SELECT logo_mime, logo_data FROM businesses WHERE id = ?', req.businessId);
   if (!row?.logo_mime) throw v.notFound('Logo');

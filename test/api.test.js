@@ -1292,6 +1292,39 @@ test('day book: sales without a bill, money received, expenses and the closing',
   assert.equal((await other.get(`/api/day-book/days?from=${yesterday}&to=${today}`)).data.days[1].spent_cash, 0);
 });
 
+test('day book: the owner’s own expense types; renaming one renames its saved expenses', async () => {
+  const c = await newBusiness();
+  const types = async () => (await c.get('/api/auth/me')).data.business.expense_types;
+  assert.ok((await types()).includes('Lab & printing'), 'the standard list to start with');
+
+  const add = (category, details) => c.post('/api/day-book', { entry_date: today, kind: 'expense', method: 'cash', amount: 1000, category, details });
+  await add('Lab & printing', 'Prints');
+  await add('Rent', 'Shop rent');
+  await add('Salary', 'Ramesh');
+
+  const put = (body) => c.put('/api/settings/expense-types', body);
+  assert.equal((await put({})).status, 400);
+  assert.equal((await put({ types: ['  ', ''] })).status, 400, 'at least one type');
+  assert.equal((await put({ types: ['x'.repeat(41)] })).status, 400);
+
+  // Rename two (swapping Rent and Salary), drop one, add one; blanks and repeats are left out.
+  const saved = await put({
+    types: ['Lab prints', 'Salary', 'Rent', 'Courier', ' courier ', ''],
+    renames: [{ from: 'Lab & printing', to: 'Lab prints' }, { from: 'Rent', to: 'Salary' }, { from: 'Salary', to: 'Rent' }],
+  });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.deepEqual(saved.data.business.expense_types, ['Lab prints', 'Salary', 'Rent', 'Courier']);
+  assert.deepEqual(await types(), ['Lab prints', 'Salary', 'Rent', 'Courier']);
+  const entries = (await c.get(`/api/day-book?from=${today}&to=${today}`)).data.entries;
+  assert.deepEqual(Object.fromEntries(entries.map((x) => [x.details, x.category])), { Prints: 'Lab prints', 'Shop rent': 'Salary', Ramesh: 'Rent' });
+
+  // Another business keeps the standard list and its own expenses.
+  const other = await newBusiness();
+  assert.ok((await other.get('/api/auth/me')).data.business.expense_types.includes('Lab & printing'));
+  await other.put('/api/settings/expense-types', { types: ['Other'], renames: [{ from: 'Lab prints', to: 'X' }] });
+  assert.equal((await c.get(`/api/day-book?from=${today}&to=${today}`)).data.entries.find((x) => x.details === 'Prints').category, 'Lab prints');
+});
+
 test('static app shell, security headers and 404s', async () => {
   const res = await fetch(`${base}/bills/123`);
   assert.equal(res.status, 200);

@@ -1,7 +1,8 @@
 // One booking, everything on one page: progress, status, the event and client, the shoot checklist, post-production
 // (only for the services booked), delivery, files & links, notes and the activity history; with payments, the team
 // and deadlines alongside.
-import { html, setHtml, on, onDateCommit, formData } from '../lib/dom.js';
+import { html, raw, setHtml, on, onDateCommit, formData, isPhone } from '../lib/dom.js';
+import { whatsappLink, openWhatsAppApp } from '../components/share.js';
 import { icon } from '../lib/icons.js';
 import { toast, toastError, confirmDialog, openModal, busy, showFormError, demoBadge } from '../lib/ui.js';
 import { navigate } from '../lib/router.js';
@@ -48,7 +49,7 @@ export default async function bookingView(el, { app, params }) {
     const wa = whatsappNumber(b.client_whatsapp || b.client_phone, currency);
     const contact = [
       b.client_phone ? html`<a href="tel:${b.client_phone.replace(/[^\d+]/g, '')}">${icon('phone', 'sm')}${b.client_phone}</a>` : '',
-      wa ? html`<a href="https://wa.me/${wa}" target="_blank" rel="noopener noreferrer">${icon('message', 'sm')}WhatsApp${b.client_whatsapp && b.client_whatsapp !== b.client_phone ? ` ${b.client_whatsapp}` : ''}</a>` : '',
+      wa ? html`<a href="${whatsappLink(wa)}" data-wa-app="${wa}" ${isPhone() ? raw('target="_blank" rel="noopener noreferrer"') : ''}>${icon('message', 'sm')}WhatsApp${b.client_whatsapp && b.client_whatsapp !== b.client_phone ? ` ${b.client_whatsapp}` : ''}</a>` : '',
       b.client_email ? html`<a href="mailto:${b.client_email}">${icon('file', 'sm')}${b.client_email}</a>` : '',
     ].filter(Boolean);
     return html`<section class="card"><div class="card-header"><h2>Event &amp; client</h2>
@@ -305,6 +306,12 @@ export default async function bookingView(el, { app, params }) {
     });
   }
 
+  // On a computer, WhatsApp opens in the desktop app (with WhatsApp Web offered if it doesn't).
+  on(el, 'click', '[data-wa-app]', (e, a) => {
+    if (isPhone()) return;
+    e.preventDefault();
+    openWhatsAppApp(a.dataset.waApp);
+  });
   on(el, 'click', '[data-action]', async (e, btn) => {
     btn.closest('details.menu')?.removeAttribute('open');
     const b = data.booking;

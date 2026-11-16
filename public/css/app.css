@@ -230,6 +230,18 @@ select.input { padding-right: 30px; appearance: none; background-image: url("dat
 .check input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--primary); flex-shrink: 0; }
 .check .check-desc { color: var(--muted); font-size: 12.5px; }
 
+/* "More options": the fields most people skip, folded away under the main ones. */
+.more-options { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.more-options > summary {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+  font-weight: 600; font-size: 13.5px; color: var(--primary); user-select: none;
+}
+.more-options > summary::-webkit-details-marker { display: none; }
+.more-options > summary .icon { transition: transform 0.15s; }
+.more-options[open] > summary .icon { transform: rotate(90deg); }
+.more-options > summary .muted { font-weight: 450; }
+.more-options > .form-grid { margin-top: 14px; }
+
 /* Segmented control */
 .segmented { display: inline-flex; background: var(--surface-3); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
 .segmented button, .segmented a {
@@ -922,11 +934,35 @@ a.tr-more { background: none; color: var(--primary); padding: 2px 4px; font-weig
 .kind-expense { background: var(--bad-bg); color: var(--bad); }
 .kind-bill { background: var(--surface-3); color: var(--text-2); }
 .week-table tr.is-selected td { background: var(--primary-soft); }
+.week-table tr.is-quiet td { color: var(--muted); }
+/* The expense Type field, with "Edit types" beside its label. */
+.ef-cat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; line-height: 1.4; }
+.ef-cat-head label { font-size: 13px; font-weight: 550; color: var(--text-2); }
+.ef-cat-head .inline-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; line-height: inherit; }
+.ef-cat-head .inline-link .icon { width: 13px; height: 13px; }
+/* Editing the expense types. */
+.type-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; padding: 2px; }
+.type-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px; align-items: center; }
+.type-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+/* A week's or month's expenses by type. */
+.type-sum { border-top: 1px solid var(--border); }
+.type-sum-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 160px) auto; align-items: center; gap: 4px 14px; padding: 10px 18px; border-bottom: 1px solid var(--border); }
+.type-sum-main { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.type-sum-bar { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; }
+.type-sum-bar span { display: block; height: 100%; border-radius: 99px; background: var(--bad); opacity: 0.75; }
+.type-sum-amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--bad); }
+@media (max-width: 560px) {
+  .type-sum-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .type-sum-bar { grid-column: 1 / -1; grid-row: 2; }
+}
 /* Day book layout: the day's cards, with the calendar beside them (under the closing on smaller screens). */
 .db-layout {
   display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "closing cal" "add cal" "list cal" "week cal";
   gap: 16px; align-items: start;
 }
+.db-layout > [hidden] { display: none; }
+/* A week or a month: its closing, day by day, then the expenses by type (nothing to add there). */
+.db-layout.is-period { grid-template-areas: "closing cal" "list cal" "week cal"; }
 .db-layout > .closing { grid-area: closing; margin-bottom: 0; }
 .db-layout > .db-add { grid-area: add; }
 .db-layout > .db-list { grid-area: list; }
@@ -935,6 +971,7 @@ a.tr-more { background: none; color: var(--primary); padding: 2px 4px; font-weig
 .db-cal-body { padding-bottom: 12px; }
 @media (max-width: 1180px) {
   .db-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "closing" "cal" "add" "list" "week"; }
+  .db-layout.is-period { grid-template-areas: "closing" "list" "week" "cal"; }
   .db-cal { position: static; }
   .db-cal .mc { max-width: 460px; margin: 0 auto; }
 }

@@ -88,6 +88,10 @@ The money goes straight to that UPI ID, so never set a placeholder `upi_id` on a
 - `'received'`: other money received;
 - `'expense'`: an expense, with a category.
 
+Expense types (v17, `businesses.expense_types`, a JSON list; empty means `EXPENSE_CATEGORIES`) are the owner's own: `serializeBusiness` returns them as `business.expense_types`, and `PUT /api/settings/expense-types` `{ types, renames: [{ from, to }] }` saves the list and renames the type on saved expenses (in two steps, so swaps work). The day book's Type field has "Edit types". A removed type stays on its old expenses.
+
+The page shows a Day, a Week (Monday to Sunday) or a Month (`?view=week|month&date=`): a week or month has its closing summed from `/api/day-book/days`, a day-by-day table and the expenses by type, and no add form.
+
 The page also has a month calendar (`public/js/components/mini-calendar.js`, also on the dashboard) that marks the dates of bookings in violet (not cancelled, from `/api/bookings?from=&to=`) and days with money in or out in green (from `/api/day-book/days`; the dashboard leaves the green marks out and shows shoots only); a past date opens in the day book, a later one only lists its shoots. `/api/day-book/days` builds each day's closing from bills, bill payments, booking payments and these entries. Money received for a bill is recorded as a bill payment (`POST /api/bills/:id/payments`), never as an entry, so it isn't counted twice. The dashboard and reports add `kind = 'sale'` entries to sales.
 
 **Bookings & Shoots** (photo / video bookings; `server/services/bookings.js`, `server/routes/bookings.js`, rules and labels in `shared/bookings.js`; views `bookings.js` for overview / list / calendar, `booking-editor.js` and `booking-view.js`; shared UI in `public/js/components/booking-ui.js`).
@@ -101,7 +105,7 @@ The page also has a month calendar (`public/js/components/mini-calendar.js`, als
 - Lists, summary counts, quick filters and reminders are worked out in memory from all of a business's bookings with the shared helpers (`shootState`, `deliveryState`, `deadlineStates`, `matchesQuick`, `bookingReminders`). They depend on the viewer's date, which `bookingApi` sends as `?today=`.
 - Team clashes: `teamConflicts` compares every date's `dayWindow` (no times = the whole day) and reports the other booking's clashing date, time and venue. Saving a booking or its team is refused with 409 `TEAM_CONFLICT` (the clashes in `details`) unless `allow_conflicts` is set; the browser's `saveWithConflicts` asks, then retries. Cancelled bookings hold no one.
 - Every change writes a line to `booking_activity`. A new client is saved as a customer through `billing.js#resolveCustomer` (demo bookings link demo customers instead).
-- Booking payments (`cash`, `upi`, `bank`, `card`, `other`) are money received, not sales: the day book closing counts cash as cash and the rest as online, and reports and the payments CSV include them.
+- Booking payments (`cash`, `upi`, `bank`, `card`, `other`; the buttons offer only `BOOKING_PAY_CHOICES`, Cash / UPI / Other, and the others stay for older payments) are money received, not sales: the day book closing counts cash as cash and the rest as online, and reports and the payments CSV include them.
 - Removing a team member who has worked on bookings only hides them (`active = 0`), so those bookings keep the name.
 
 **Dashboard** (`public/js/views/dashboard.js`, definitions in `shared/dashboard.js`). It is made of widgets (boxes, `DASHBOARD_WIDGETS`), quick actions (`QUICK_ACTIONS`) and summary numbers (`SUMMARY_STATS`).
@@ -128,6 +132,8 @@ The page also has a month calendar (`public/js/components/mini-calendar.js`, als
   - Use `onDateCommit` instead of `change` when a date input's change saves or redraws: Chromium fires `change` for each typed part of a date.
 - A view that sets a leave guard clears it in its cleanup with `clearLeaveGuard(guard)` (`lib/router.js`). A view that awaits before drawing returns at once if `!el.isConnected` (it was left while loading), so it can't touch the next view's guard.
 - `lib/ui.js` has toasts, `openModal`, `confirmDialog`, `busy` and form-error helpers.
+- `isPhone()` (`lib/dom.js`) tells a phone or tablet from a computer. Phones get "Take photo" (the camera) beside "Gallery". WhatsApp links go through `whatsappLink` / `shareOnWhatsApp` (`components/share.js`): `https://wa.me/…` on a phone, `whatsapp://send?…` on a computer so the WhatsApp desktop app opens instead of a browser tab, with a toast offering WhatsApp Web if the app doesn't open. The customer's public pages keep wa.me.
+- The product form shows the name, stock, selling price and category; purchase price, unit, low-stock alert, SKU and barcode are under "More options".
 - Layouts adapt with container queries (`container: …` in `public/css/app.css`) as well as media queries.
 - `public/css/invoice.css` styles the bill and the public pages.
 

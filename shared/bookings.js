@@ -153,6 +153,8 @@ export const LINK_TYPES = {
 };
 
 export const BOOKING_PAY_METHODS = { cash: 'Cash', upi: 'UPI', bank: 'Bank transfer', card: 'Card', other: 'Other' };
+// The buttons offered when money comes in. Bank transfer and Card stay above so older payments keep their names.
+export const BOOKING_PAY_CHOICES = ['cash', 'upi', 'other'];
 export const BOOKING_PAYMENT_LABELS = { unpaid: 'Not paid', partial: 'Partially paid', paid: 'Paid' };
 export function bookingPaymentStatus(total, paid) {
   if (total > 0 && paid >= total) return 'paid';

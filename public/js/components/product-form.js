@@ -25,6 +25,9 @@ export function openProductForm(app, { product = null, kind: initialKind = 'good
   };
   const price = (v) => (v === '' || v === null || v === undefined ? '' : fromMinor(v));
   let kind = p.kind || 'goods';
+  // The form shows the name, stock, selling price and category; the rest waits under "More options", open when
+  // editing an item that has an SKU or barcode set.
+  const moreOpen = editing && !!(p.sku || p.barcode);
 
   return new Promise((resolve) => {
     let saved = null;
@@ -40,34 +43,40 @@ export function openProductForm(app, { product = null, kind: initialKind = 'good
         <div class="form-grid">
           <div class="field span-all"><label data-name-label>${kind === 'service' ? 'Service name' : 'Product name'} <span class="req">*</span></label>
             <input class="input" name="name" value="${p.name}" maxlength="160" required autofocus placeholder="e.g. Photo Frame 8x10 or Wedding Photography"></div>
-          <div class="field"><label>SKU</label>
-            <input class="input" name="sku" value="${p.sku}" maxlength="60" placeholder="Your item code"></div>
-          <div class="field" data-goods-only><label>Barcode</label>
-            <input class="input" name="barcode" value="${p.barcode}" maxlength="60" placeholder="Scan or type" inputmode="numeric">
-            <span class="field-hint">Used for scanner entry while billing.</span></div>
-          <div class="field"><label>Category</label>
-            <input class="input" name="category" value="${p.category}" maxlength="60" list="dl-categories" placeholder="e.g. Frames, Photography">
-            <datalist id="dl-categories"></datalist></div>
-          <div class="field"><label>Unit</label>
-            <input class="input" name="unit" value="${p.unit}" maxlength="20" list="dl-units" required>
-            <datalist id="dl-units">${COMMON_UNITS.map((u) => html`<option value="${u}">`)}</datalist></div>
-          <div class="field"><label>Purchase price</label>${moneyInput('purchase_price', price(p.purchase_price), biz.currency, 'placeholder="0.00"')}
-            <span class="field-hint" data-cost-hint>${kind === 'service' ? 'Optional — your cost, for margin.' : 'Cost per unit — used for stock value.'}</span></div>
+          ${editing ? html`
+            <div class="field" data-goods-only><label>Stock</label>
+              <input class="input" value="${p.quantity} ${p.unit}" readonly>
+              <span class="field-hint">Use “Adjust stock” on the product page to change it.</span></div>`
+          : html`
+            <div class="field" data-goods-only><label>Stock</label>
+              <input class="input" name="quantity" inputmode="decimal" value="${p.quantity}" placeholder="0">
+              <span class="field-hint">How many you have now.</span></div>`}
           <div class="field"><label>Selling price <span class="req">*</span></label>${moneyInput('selling_price', price(p.selling_price), biz.currency, 'placeholder="0.00" required')}
             <span class="field-hint" data-margin></span></div>
-          ${editing ? html`
-            <div class="field" data-goods-only><label>Current stock</label>
-              <input class="input" value="${p.quantity} ${p.unit}" readonly>
-              <span class="field-hint">Use “Adjust stock” on the product page to change quantity.</span></div>`
-          : html`
-            <div class="field" data-goods-only><label>Opening stock</label>
-              <input class="input" name="quantity" inputmode="decimal" value="${p.quantity}" placeholder="0"></div>`}
-          <div class="field" data-goods-only><label>Low-stock alert at</label>
-            <input class="input" name="low_stock_threshold" inputmode="decimal" value="${p.low_stock_threshold}">
-            <span class="field-hint">Alert when stock falls to this level.</span></div>
+          <div class="field span-all"><label>Category</label>
+            <input class="input" name="category" value="${p.category}" maxlength="60" list="dl-categories" placeholder="e.g. Frames, Photography">
+            <datalist id="dl-categories"></datalist></div>
           <p class="muted small span-all ${kind === 'service' ? '' : 'hidden'}" data-service-note style="margin:0">
             Services (shoots, editing, design work) can be billed like products but never change stock.</p>
-        </div>`,
+        </div>
+        <details class="more-options" data-more ${moreOpen ? 'open' : ''}>
+          <summary>${icon('chevronRight', 'sm')}More options <span class="muted small" data-more-hint></span></summary>
+          <div class="form-grid">
+            <div class="field"><label>Purchase price</label>${moneyInput('purchase_price', price(p.purchase_price), biz.currency, 'placeholder="0.00"')}
+              <span class="field-hint" data-cost-hint>${kind === 'service' ? 'Optional — your cost, for margin.' : 'Cost per unit — used for stock value.'}</span></div>
+            <div class="field"><label>Unit</label>
+              <input class="input" name="unit" value="${p.unit}" maxlength="20" list="dl-units" required>
+              <datalist id="dl-units">${COMMON_UNITS.map((u) => html`<option value="${u}">`)}</datalist></div>
+            <div class="field" data-goods-only><label>Low-stock alert at</label>
+              <input class="input" name="low_stock_threshold" inputmode="decimal" value="${p.low_stock_threshold}">
+              <span class="field-hint">Alert when stock falls to this level.</span></div>
+            <div class="field"><label>SKU</label>
+              <input class="input" name="sku" value="${p.sku}" maxlength="60" placeholder="Your item code"></div>
+            <div class="field" data-goods-only><label>Barcode</label>
+              <input class="input" name="barcode" value="${p.barcode}" maxlength="60" placeholder="Scan or type" inputmode="numeric">
+              <span class="field-hint">Used for scanner entry while billing.</span></div>
+          </div>
+        </details>`,
       footer: html`<button type="button" class="btn" data-close>Cancel</button>
         <button type="submit" class="btn btn-primary">${editing ? 'Save changes' : 'Save'}</button>`,
       onClose: () => resolve(saved),
@@ -104,6 +113,12 @@ export function openProductForm(app, { product = null, kind: initialKind = 'good
             m.close();
           } catch (err) {
             showFormError(form, err);
+            // A problem with a field under "More options" opens it.
+            const bad = form.querySelector('[data-more] .is-invalid');
+            if (bad) {
+              bad.closest('details').open = true;
+              bad.focus();
+            }
           }
         });
         return undefined;
@@ -111,6 +126,13 @@ export function openProductForm(app, { product = null, kind: initialKind = 'good
     });
 
     const form = modal.form;
+    // A field under "More options" with a problem opens it, so the message can be seen.
+    const more = form.querySelector('[data-more]');
+    form.addEventListener('invalid', (e) => { if (more.contains(e.target)) more.open = true; }, true);
+    const showMoreHint = () => {
+      form.querySelector('[data-more-hint]').textContent = kind === 'service'
+        ? '· purchase price, unit, SKU' : '· purchase price, unit, low-stock alert, SKU, barcode';
+    };
     const marginEl = form.querySelector('[data-margin]');
     const updateMargin = () => {
       const cost = toMinor(form.purchase_price.value);
@@ -140,6 +162,7 @@ export function openProductForm(app, { product = null, kind: initialKind = 'good
       const unit = form.elements.namedItem('unit');
       if (service && unit.value === 'pcs') unit.value = 'job';
       if (!service && unit.value === 'job') unit.value = 'pcs';
+      showMoreHint();
     };
     form.addEventListener('click', (e) => {
       const b = e.target.closest('[data-kind]');

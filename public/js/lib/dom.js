@@ -87,6 +87,14 @@ export function debounce(fn, ms = 200) {
   return wrapped;
 }
 
+/**
+ * A phone or tablet (a touch screen, or a phone's browser even when it shows the desktop site), not a computer.
+ * Phones get a camera button for photos, and WhatsApp links that open the app through wa.me.
+ */
+export const isPhone = () => matchMedia('(pointer: coarse)').matches
+  || navigator.userAgentData?.mobile === true
+  || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
 /** Read a form into a plain object (checkboxes -> booleans). */
 export function formData(form) {
   const data = {};

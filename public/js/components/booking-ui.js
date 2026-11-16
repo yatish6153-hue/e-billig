@@ -7,7 +7,8 @@ import { openModal, confirmDialog, toast, toastError, busy, showFormError, clear
 import { moneyInput } from './product-form.js';
 import { formatDate, formatMoney, toMinor, fromMinor, isoDate } from '/shared/format.js';
 import {
-  BOOKING_FLOW, BOOKING_STATUSES, SHOOT_STATES, DELIVERY_STATES, BOOKING_PAYMENT_LABELS, BOOKING_PAY_METHODS, TEAM_ROLES, LINK_TYPES,
+  BOOKING_FLOW, BOOKING_STATUSES, SHOOT_STATES, DELIVERY_STATES, BOOKING_PAYMENT_LABELS, BOOKING_PAY_METHODS, BOOKING_PAY_CHOICES,
+  TEAM_ROLES, LINK_TYPES,
   progressSteps, flowStep, timeRange, eventTitle, scheduleOf,
 } from '/shared/bookings.js';
 
@@ -308,9 +309,12 @@ export async function openTeamForm(detail) {
 }
 
 // ---- Payments & links ------------------------------------------------------------------
+/** Cash, UPI and Other (and an older payment's own method, so it still shows as chosen). */
 export function payMethodButtons(selected) {
-  return html`<div class="method-options bk-methods" role="radiogroup" aria-label="Payment method">${Object.entries(BOOKING_PAY_METHODS).map(([value, label]) =>
-    html`<button type="button" class="pay-option ${value === selected ? 'active' : ''}" data-pay-method="${value}">${label}</button>`)}</div>`;
+  const choices = BOOKING_PAY_CHOICES.includes(selected) || !BOOKING_PAY_METHODS[selected]
+    ? BOOKING_PAY_CHOICES : [...BOOKING_PAY_CHOICES, selected];
+  return html`<div class="method-options bk-methods" role="radiogroup" aria-label="Payment method">${choices.map((value) =>
+    html`<button type="button" class="pay-option ${value === selected ? 'active' : ''}" data-pay-method="${value}">${BOOKING_PAY_METHODS[value]}</button>`)}</div>`;
 }
 
 /** Make the method buttons in `root` set the hidden input `input`. */
