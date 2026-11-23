@@ -24,15 +24,17 @@ export function buildQuery(params = {}) {
   return s ? `?${s}` : '';
 }
 
-export async function api(path, { method = 'GET', body, query } = {}) {
+/** file: a File or Blob sent as the raw body (a backup to restore), instead of a JSON body. */
+export async function api(path, { method = 'GET', body, query, file } = {}) {
   const headers = { 'X-Requested-With': 'fetch', Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (file !== undefined) headers['Content-Type'] = 'application/octet-stream';
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
   let res;
   try {
     res = await fetch(`/api${path}${buildQuery(query)}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: file !== undefined ? file : body !== undefined ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
     });
   } catch {

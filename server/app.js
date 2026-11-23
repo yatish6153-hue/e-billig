@@ -14,6 +14,7 @@ import trackingRoutes from './routes/tracking.js';
 import dayBookRoutes from './routes/daybook.js';
 import bookingRoutes, { teamRouter } from './routes/bookings.js';
 import viewRoutes from './routes/view.js';
+import backupRoutes from './routes/backup.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -59,6 +60,7 @@ export function createApp() {
   app.use('/api/team', requireAuth, ownerOnly, teamRouter);
   app.use('/api/reports', requireAuth, ownerOnly, reportRoutes);
   app.use('/api/settings', requireAuth, ownerOnly, settingsRoutes);
+  app.use('/api/backup', requireAuth, ownerOnly, backupRoutes);
   app.use('/api', (req, res, next) => next(new HttpError(404, 'Not found.')));
 
   app.use('/i', publicRoutes);

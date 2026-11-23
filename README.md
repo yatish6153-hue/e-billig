@@ -80,7 +80,7 @@ npm test
 - **Send status** (share icon) opens a prefilled update ("Your design is ready for review…") with the bill link. The customer's link shows the job's progress at the top.
 - Each bill keeps a dated history of its stages. The dashboard shows how many jobs are at each stage.
 
-**Team login — Tracking for your team, to look at only.**
+**Team login — Tracking for your team, to look at and add photos.**
 - In **Settings → Team login**, add a login (a name, an email and a password) for your team. The email doesn't need to be a real inbox: it's what they type to sign in, on the same sign-in page.
 - Signed in, the team sees only **Tracking**: search by bill number, name, mobile number or date, with the same All / In progress / Final tabs. Each job shows:
   - the **bill number** and the **customer's name**;
@@ -89,7 +89,8 @@ npm test
   - **what was ordered**;
   - the **stage**;
   - the **amount due**, or Paid.
-- They see no prices, totals or payments, no other part of the app, and they can't change anything: no stage buttons, no payments, no photos added or removed.
+- They can **add the customer's photo** to a job: tap the job's photo box, then **Take photo** (the phone's camera) or **From gallery**. It shows on the bill for you straight away, never on the customer's link.
+- They see no prices, totals or payments and no other part of the app, and can't change anything else: no stage buttons, no payments, and no removing photos (only you can).
 - **Change password** signs the team out until they use the new one, and **Remove** ends that login straight away.
 
 **Bookings & Shoots: weddings, pre-weddings, birthdays, corporate events and other programs.**
@@ -137,12 +138,19 @@ npm test
 - The money goes straight to your UPI ID. The app isn't told about it, so when it arrives, record it with **Receive balance** (Online). The page asks the customer to send the payment screenshot on WhatsApp.
 - **Copy payment link** (in the bill's ⋯ menu) gives you the link to send another way.
 
-**Customers.** Name, WhatsApp number, email and billing address. Each customer shows bill history, total billed, paid and **balance**.
+**Customers.** Name, WhatsApp number, email and billing address. Each customer shows bill history, total billed, paid and **balance**. A green **WhatsApp** button next to each number (and on the customer's page) opens a chat with them: the WhatsApp app on a phone, WhatsApp Desktop on a computer.
 
 **Reports & settings.**
 - Date-filtered sales reports: net sales (bills plus sales without a bill), money received (bills, bookings and the day book), outstanding, expenses (and sales less expenses), best sellers (by revenue or quantity), Cash/Online split and low stock.
 - CSV exports: bill-wise sales, product-wise sales, payments (bills and bookings), the day book and inventory.
+- **Customers as an Excel file** (Customers → Download Excel, or Reports → Export): every customer with their WhatsApp number, email, address, bills, total billed, paid, balance, last bill date, bookings and when they were added.
 - Settings cover business details (name, phone, email, website, address) and logo, currency (INR by default), bill number prefix and next number, UPI ID, round-off, payment details and terms.
+
+**Backup & restore** (Settings → Backup & restore).
+- **Download backup** saves one file with everything in your business: bills, customers, inventory and stock history, bookings, the day book, job photos, the logo and settings. Logins and passwords are not in it. Keep it somewhere safe (Google Drive, a pen drive).
+- **Restore from a backup** puts everything back as it was in that file, for example after a bill was deleted by mistake. It first shows the file's date and what it holds, and asks before replacing anything. Whatever was added or changed after the backup is replaced; logins stay as they are, and bill numbers given out since are not given out again.
+- A backup can also be restored into a new account (if the server or its database is lost): sign up again, then restore.
+- Any bill can be deleted from its page (⋯ → Delete bill): its stock goes back, and its payments leave the day book. Cancel instead to keep a record of it.
 
 ## Going live (e.g. billing.deveshstudio.com)
 
@@ -158,11 +166,11 @@ Run behind HTTPS (nginx, Caddy, or a platform like Render or Railway) and set:
 | `DB_PATH` | `/var/lib/ebilling/ebilling.db` | Where the SQLite file lives (back this up) |
 | `DEMO_ACCOUNT` | `false` / `true` | Force the demo login off or on |
 
-**Backups:** copy the database file while the app is stopped, or use `sqlite3 ebilling.db ".backup backup.db"` while it runs. Job photos and the logo are kept in the same file, so one backup has everything.
+**Backups:** each business can download its own backup in Settings → Backup & restore. For the whole server (every business and login), copy the database file while the app is stopped, or use `sqlite3 ebilling.db ".backup backup.db"` while it runs. Job photos and the logo are kept in the same file, so one backup has everything. A large backup is uploaded in one request (up to 1 GB), so a reverse proxy in front of the app must allow uploads that size on `/api/backup/check` (nginx: `client_max_body_size`).
 
 ### Before real billing
 
-1. Sign in to your own account, not the shared demo.
+1. Sign in to your own account, not the shared demo. To keep working in the demo business as your own, change its login email and password in **Settings → Account** (a fresh demo business is then made for the demo login the next time the app starts).
 2. In **Settings**, upload your logo and set your UPI ID, bank details and terms. A ready-to-use version of the Devesh Studio logo (from deveshstudio.com, placed on a dark tile so its light lettering shows on white invoices) is at `server/assets/devesh-studio-logo.png`. The demo business uses it automatically.
 3. Remove demo data (Settings → Demo data). If no real invoices exist yet, numbering restarts at `INV-0001`.
 

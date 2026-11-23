@@ -2,7 +2,7 @@ import express from 'express';
 import { get, all, run, nowIso } from '../db.js';
 import * as v from '../util.js';
 import {
-  saveDraft, finalizeBill, cancelBill, deleteDraft, duplicateBill, addPayment, deletePayment,
+  saveDraft, finalizeBill, cancelBill, deleteBill, duplicateBill, addPayment, deletePayment,
   enableShare, revokeShare, loadInvoice, getLogo, serializeBill, readPhotoSource,
 } from '../services/billing.js';
 import { renderInvoicePdf, pdfFilename } from '../services/pdf.js';
@@ -106,9 +106,10 @@ router.put('/:id', (req, res) => {
   res.json(billDetail(req, bill.id));
 });
 
+// Any bill, finalized or cancelled too (see deleteBill).
 router.delete('/:id', (req, res) => {
-  deleteDraft(req.businessId, ownedBill(req).id);
-  res.json({ ok: true });
+  const result = deleteBill(req.businessId, req.user.id, ownedBill(req).id);
+  res.json({ ok: true, restored_products: result.restored });
 });
 
 router.post('/:id/finalize', (req, res) => {

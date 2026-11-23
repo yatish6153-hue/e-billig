@@ -1,9 +1,15 @@
 // End-to-end API tests against an in-memory database: npm test
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { openDb, closeDb, get as dbGet, run as dbRun } from '../server/db.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { DatabaseSync } from 'node:sqlite';
+import { openDb, closeDb, get as dbGet, all as dbAll, run as dbRun } from '../server/db.js';
 import { createApp } from '../server/app.js';
 import { ensureDemoAccount, DEMO_ACCOUNT } from '../server/seed.js';
+import { BACKUP_TABLES, NOT_IN_BACKUP } from '../server/services/backup.js';
 
 let server;
 let base;
@@ -39,6 +45,13 @@ function client() {
     put: (p, b = {}) => call('PUT', p, b),
     del: (p) => call('DELETE', p),
     raw: (p) => fetch(base + p, { headers: { cookie } }), // files, read as bytes
+    // A file as the raw body (a backup to restore).
+    send: async (p, bytes) => {
+      const res = await fetch(base + p, {
+        method: 'POST', body: bytes, headers: { cookie, 'X-Requested-With': 'fetch', 'Content-Type': 'application/octet-stream' },
+      });
+      return { status: res.status, data: await res.json() };
+    },
   };
 }
 
@@ -67,6 +80,20 @@ async function newProduct(c, overrides = {}) {
 const today = new Date().toISOString().slice(0, 10);
 const inDays = (n) => new Date(Date.parse(today) + n * 86400_000).toISOString().slice(0, 10);
 const line =(p, quantity = 1, extra = {}) => ({ product_id: p.id, quantity, unit_price: p.selling_price, discount_pct: 0, tax_rate: p.tax_rate, ...extra });
+
+/** The files in a zip (an .xlsx), by name, as text. */
+function unzip(buf) {
+  const files = {};
+  for (let at = 0; buf.readUInt32LE(at) === 0x04034b50;) {
+    const size = buf.readUInt32LE(at + 18);
+    const nameLength = buf.readUInt16LE(at + 26);
+    const start = at + 30 + nameLength + buf.readUInt16LE(at + 28);
+    const data = buf.subarray(start, start + size);
+    files[buf.toString('utf8', at + 30, at + 30 + nameLength)] = (buf.readUInt16LE(at + 8) === 8 ? zlib.inflateRawSync(data) : data).toString('utf8');
+    at = start + size;
+  }
+  return files;
+}
 
 async function stockOf(c, productId) {
   const r = await c.get(`/api/products/${productId}`);
@@ -293,7 +320,48 @@ test('inventory: drafts never touch stock; finalize deducts exactly once', async
   assert.equal(sales[0].balance_after, 6);
 
   assert.equal((await c.put(`/api/bills/${draft.id}`, { bill_date: today, items: [line(p, 1)] })).status, 409, 'finalized bills are read-only');
-  assert.equal((await c.del(`/api/bills/${draft.id}`)).status, 409, 'finalized bills cannot be deleted');
+});
+
+test('deleting a bill: any bill can go; a finalized one puts its stock back, and its money leaves the day book', async () => {
+  const c = await newBusiness();
+  const p = await newProduct(c, { quantity: 10, selling_price: 100000, tax_rate: 0 });
+  const bill = (await c.post('/api/bills', { bill_date: today, items: [line(p, 3)] })).data.bill;
+  await c.post(`/api/bills/${bill.id}/finalize`, { payment: { amount: 50000, method: 'cash' }, track: true });
+  const sharePath = new URL((await c.post(`/api/bills/${bill.id}/share`, {})).data.share_url).pathname;
+  assert.equal(await stockOf(c, p.id), 7);
+
+  const other = await newBusiness();
+  assert.equal((await other.del(`/api/bills/${bill.id}`)).status, 404, 'not another business’s bill');
+  assert.equal(await stockOf(c, p.id), 7);
+
+  const r = await c.del(`/api/bills/${bill.id}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.restored_products, 1);
+  assert.equal(await stockOf(c, p.id), 10, 'its stock goes back');
+  assert.equal((await c.get(`/api/bills/${bill.id}`)).status, 404);
+  assert.equal((await c.del(`/api/bills/${bill.id}`)).status, 404, 'gone after the first delete');
+  assert.equal((await fetch(`${base}${sharePath}`)).status, 404, 'the customer’s link stops working');
+  for (const table of ['bill_items', 'payments', 'bill_stages']) {
+    assert.equal(dbGet(`SELECT COUNT(*) AS n FROM ${table} WHERE bill_id = ?`, bill.id).n, 0, table);
+  }
+  const [closing] = (await c.get(`/api/day-book/days?from=${today}&to=${today}`)).data.days;
+  assert.deepEqual([closing.bills, closing.sales, closing.received_cash], [0, 0, 0], 'its sale and payment leave the day book');
+
+  // The stock history keeps the sale and its return, no longer linked to a bill.
+  const moves = (await c.get(`/api/stock/movements?product_id=${p.id}`)).data.movements;
+  assert.deepEqual(moves.filter((m) => m.type.startsWith('sale')).map((m) => [m.type, m.quantity, m.bill_id, m.note]), [
+    ['sale_cancel', 3, null, 'Invoice INV-0001 deleted'],
+    ['sale', -3, null, 'Invoice INV-0001'],
+  ]);
+
+  // Its number isn't given out again. A cancelled bill can be deleted too, and its stock isn't put back twice.
+  const next = (await c.post('/api/bills', { bill_date: today, items: [line(p, 2)] })).data.bill;
+  assert.equal((await c.post(`/api/bills/${next.id}/finalize`, {})).data.bill.invoice_no, 'INV-0002');
+  await c.post(`/api/bills/${next.id}/cancel`, { reason: 'Changed the order' });
+  assert.equal(await stockOf(c, p.id), 10);
+  const r2 = await c.del(`/api/bills/${next.id}`);
+  assert.equal(r2.data.restored_products, 0);
+  assert.equal(await stockOf(c, p.id), 10);
 });
 
 test('inventory: insufficient stock warns, and can be overridden explicitly', async () => {
@@ -1139,7 +1207,7 @@ test('job photos: on the bill and the job, only photos, private, and gone with t
   assert.equal((await c.raw(first.url)).status, 200);
 });
 
-test('team login: only the jobs, to look at, without prices; set up and ended by the owner', async () => {
+test('team login: only the jobs, without prices; can add photos but change nothing else; set up and ended by the owner', async () => {
   const c = await newBusiness();
   const owner = (await c.get('/api/auth/me')).data.user;
   assert.equal(owner.role, 'owner');
@@ -1209,7 +1277,23 @@ test('team login: only the jobs, to look at, without prices; set up and ended by
   const hidden = (await c.post(`/api/bills/${untracked.id}/photos`, { image: jpeg, thumb: jpeg })).data.photos[0];
   assert.equal((await t.raw(`/api/view/jobs/${untracked.id}/photos/${hidden.id}`)).status, 404);
 
-  // Nothing else, and nothing can be changed.
+  // The team adds the customer's photo to a job on its list, through its own path, and the owner sees it on the bill.
+  r = await t.post(`/api/view/jobs/${job.id}/photos`, { image: jpeg, thumb: jpeg, width: 800, height: 600 });
+  assert.equal(r.status, 201);
+  const added = r.data.photos[1];
+  assert.deepEqual(r.data.photos.map((x) => x.id), [ownerPhoto.id, added.id]);
+  assert.deepEqual(Object.keys(added).sort(), ['id', 'thumb_url', 'url']);
+  assert.equal(added.url, `/api/view/jobs/${job.id}/photos/${added.id}`);
+  assert.equal((await t.raw(added.thumb_url)).headers.get('content-type'), 'image/jpeg');
+  assert.deepEqual((await c.get(`/api/bills/${job.id}`)).data.photos.map((x) => x.id), [ownerPhoto.id, added.id]);
+  assert.equal((await t.post(`/api/view/jobs/${job.id}/photos`, { image: 'data:text/html;base64,PGI+', thumb: jpeg })).status, 400, 'photos only');
+  assert.equal((await t.post(`/api/view/jobs/${untracked.id}/photos`, { image: jpeg, thumb: jpeg })).status, 404, 'only jobs on the list');
+  // But can't remove one: that's the owner's.
+  assert.equal((await t.del(`/api/view/jobs/${job.id}/photos/${added.id}`)).status, 404);
+  assert.equal((await t.del(`/api/bills/${job.id}/photos/${added.id}`)).status, 403);
+  assert.equal((await c.get(`/api/bills/${job.id}`)).data.photos.length, 2);
+
+  // Nothing else, and nothing else can be changed.
   for (const path of ['/api/bills', `/api/bills/${job.id}`, '/api/tracking', '/api/dashboard', '/api/customers', '/api/products',
     '/api/stock', '/api/day-book', '/api/bookings', '/api/team', '/api/reports/summary', '/api/settings', '/api/settings/team-logins']) {
     assert.equal((await t.get(path)).status, 403, path);
@@ -1231,6 +1315,7 @@ test('team login: only the jobs, to look at, without prices; set up and ended by
   await ot.post('/api/auth/login', { email: otherEmail, password: 'teampass123' });
   assert.equal((await ot.get('/api/view/jobs')).data.jobs.length, 0);
   assert.equal((await ot.raw(photo.url)).status, 404);
+  assert.equal((await ot.post(`/api/view/jobs/${job.id}/photos`, { image: jpeg, thumb: jpeg })).status, 404);
   assert.equal((await other.del(`/api/settings/team-logins/${loginId}`)).status, 404, 'not another business’s login');
 
   // A new password signs the team out; removing the login ends it. The owner's own login isn't a team login.
@@ -1390,4 +1475,219 @@ test('static app shell, security headers and 404s', async () => {
   assert.equal(res.headers.get('x-frame-options'), 'DENY');
   assert.equal((await fetch(`${base}/api/nope`, { headers: { 'X-Requested-With': 'fetch' } })).status, 404);
   assert.equal((await fetch(`${base}/shared/calc.js`)).status, 200);
+});
+
+test('backup: every table with business data is in the backup (add a new one to BACKUP_TABLES)', () => {
+  const tables = dbAll("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((t) => t.name);
+  const known = [...BACKUP_TABLES.map((t) => t.name), ...NOT_IN_BACKUP].sort();
+  assert.deepEqual(tables, known);
+});
+
+test('backup and restore: a deleted bill comes back with everything else as it was', async () => {
+  const c = await newBusiness();
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2000, 7)]);
+  const photo = { image: `data:image/jpeg;base64,${jpeg.toString('base64')}`, thumb: `data:image/jpeg;base64,${jpeg.toString('base64')}`, width: 800, height: 600 };
+  const p = await newProduct(c, { quantity: 10, selling_price: 50000, tax_rate: 0 });
+  const shoot = await newProduct(c, { kind: 'service', quantity: 0, selling_price: 2000000, tax_rate: 0 });
+  const bill = (await c.post('/api/bills', { bill_date: today, customer_name: 'Asha Verma', customer_phone: '98290 12345', items: [line(p, 2)] })).data.bill;
+  assert.equal((await c.post(`/api/bills/${bill.id}/photos`, photo)).status, 201);
+  await c.post(`/api/bills/${bill.id}/finalize`, { payment: { amount: 40000, method: 'cash' }, track: true });
+  const share = new URL((await c.post(`/api/bills/${bill.id}/share`, {})).data.share_url).pathname;
+  await c.post('/api/day-book', { entry_date: today, kind: 'expense', details: 'Tea', category: 'Food & tea', amount: 5000, method: 'cash' });
+  const ravi = (await c.post('/api/team', { name: 'Ravi', role: 'Photographer' })).data.member;
+  const booking = (await c.post('/api/bookings', {
+    client_name: 'Asha Verma', schedule: [{ date: inDays(5) }], team: [{ member_id: ravi.id }],
+    services: [{ name: 'Wedding shoot', qty: 1, rate: 2000000, product_id: shoot.id }],
+  })).data.booking;
+  await c.post(`/api/bookings/${booking.id}/links`, { type: 'other', url: 'https://drive.google.com/x' });
+  const settings = (await c.get('/api/settings')).data.business;
+  await c.put('/api/settings', { ...settings, review_url: 'https://g.page/r/abc/review' });
+
+  const download = await c.raw('/api/backup');
+  assert.equal(download.status, 200);
+  assert.match(download.headers.get('content-disposition'), /^attachment; filename="ebilling-backup-test-shop-\d+-\d{4}-\d{2}-\d{2}\.db"$/);
+  const backup = Buffer.from(await download.arrayBuffer());
+  assert.equal(backup.subarray(0, 15).toString(), 'SQLite format 3');
+  const login = dbGet('SELECT u.password_hash FROM users u JOIN bills b ON b.business_id = u.business_id WHERE b.id = ?', bill.id);
+  assert.ok(!backup.includes(Buffer.from(login.password_hash)), 'no logins or passwords');
+
+  // After the backup: the bill is deleted by mistake, another is made, settings change.
+  assert.equal((await c.del(`/api/bills/${bill.id}`)).status, 200);
+  const later = (await c.post('/api/bills', { bill_date: today, items: [line(p, 1)] })).data.bill;
+  assert.equal((await c.post(`/api/bills/${later.id}/finalize`, {})).data.bill.invoice_no, 'INV-0002');
+  await c.put('/api/settings', { ...(await c.get('/api/settings')).data.business, name: 'Renamed' });
+  assert.equal(await stockOf(c, p.id), 9);
+
+  // Step 1 shows what's in the file; step 2 restores it.
+  const checked = await c.send('/api/backup/check', backup);
+  assert.equal(checked.status, 200, JSON.stringify(checked.data));
+  assert.match(checked.data.backup.business_name, /^Test Shop \d+$/);
+  assert.ok(Date.parse(checked.data.backup.created_at));
+  const { counts } = checked.data.backup;
+  assert.deepEqual([counts.bills, counts.products, counts.bookings, counts.day_entries, counts.photos], [1, 2, 1, 1, 1]);
+  const restored = await c.post('/api/backup/restore', { upload: checked.data.upload });
+  assert.equal(restored.status, 200, JSON.stringify(restored.data));
+  assert.equal(restored.data.restored.bills, 1);
+  assert.equal((await c.post('/api/backup/restore', { upload: checked.data.upload })).status, 400, 'a check is used once');
+
+  const back = (await c.get(`/api/bills/${bill.id}`)).data;
+  assert.equal(back.bill.invoice_no, 'INV-0001', 'the same bill, at the same address');
+  assert.deepEqual(back.items.map((i) => [i.product_id, i.quantity]), [[p.id, 2]]);
+  assert.deepEqual(back.payments.map((x) => x.amount), [40000]);
+  assert.equal(back.bill.work_stage, 'received');
+  assert.equal(back.photos.length, 1);
+  assert.deepEqual(Buffer.from(await (await c.raw(back.photos[0].url)).arrayBuffer()), jpeg);
+  assert.deepEqual((await c.get('/api/bills')).data.bills.map((x) => x.invoice_no), ['INV-0001'], 'INV-0002 was made after the backup');
+  assert.ok(later.id);
+  assert.equal(await stockOf(c, p.id), 8, 'stock as it was');
+  assert.equal((await fetch(`${base}${share}`)).status, 200, 'the customer’s link works again');
+  const [closing] = (await c.get(`/api/day-book/days?from=${today}&to=${today}`)).data.days;
+  assert.deepEqual([closing.received_cash, closing.spent_cash], [40000, 5000]);
+  const bk = (await c.get(`/api/bookings/${booking.id}?today=${today}`)).data.booking;
+  assert.deepEqual(bk.team.map((t) => t.member_id), [ravi.id]);
+  assert.deepEqual(bk.services.map((s) => s.product_id), [shoot.id]);
+  assert.equal(bk.links.length, 1);
+  const biz = restored.data.business;
+  assert.match(biz.name, /^Test Shop \d+$/);
+  assert.equal(biz.review_url, 'https://g.page/r/abc/review');
+  assert.equal(biz.next_invoice_no, 3, 'INV-0002 was given out after the backup, so it is not given out again');
+
+  // Into another business (a new account after the database was lost): rows get new ids, links follow them.
+  const other = await newBusiness();
+  const into = await other.send('/api/backup/check', backup);
+  assert.equal((await c.post('/api/backup/restore', { upload: into.data.upload })).status, 400, 'only the business that uploaded it');
+  assert.equal((await other.post('/api/backup/restore', { upload: into.data.upload })).status, 200);
+  const [copyRow] = (await other.get('/api/bills')).data.bills;
+  assert.notEqual(copyRow.id, bill.id, 'the first business still has that id');
+  const copy = (await other.get(`/api/bills/${copyRow.id}`)).data;
+  assert.equal(copy.bill.invoice_no, 'INV-0001');
+  assert.notEqual(copy.items[0].product_id, p.id);
+  assert.equal((await other.get(`/api/products/${copy.items[0].product_id}`)).data.product.quantity, 8);
+  assert.deepEqual([copy.payments.length, copy.photos.length], [1, 1]);
+  assert.equal(copy.share_url, null, 'the customer’s link stays with the first business');
+  const [otherBooking] = (await other.get(`/api/bookings?today=${today}`)).data.bookings;
+  const otherShoot = (await other.get(`/api/products/${otherBooking.services[0].product_id}`)).data.product;
+  assert.equal(otherShoot.name, shoot.name);
+  assert.notEqual(otherBooking.team[0].member_id, ravi.id);
+  assert.equal((await c.get(`/api/bills/${bill.id}`)).data.bill.invoice_no, 'INV-0001', 'the first business is untouched');
+});
+
+test('backup and restore: files that are not backups, and a backup changed by hand', async () => {
+  const c = await newBusiness();
+  const r = await c.send('/api/backup/check', Buffer.from('hello, not a backup'));
+  assert.equal(r.status, 400);
+  assert.match(r.data.error.message, /not an eBilling backup/);
+  assert.equal((await c.send('/api/backup/check', Buffer.alloc(0))).status, 400);
+  assert.equal((await c.post('/api/backup/restore', { upload: 'nothing' })).status, 400);
+  assert.equal((await client().send('/api/backup/check', Buffer.from('x'))).status, 401);
+
+  await newProduct(c);
+  const booking = (await c.post('/api/bookings', { client_name: 'Kavita', schedule: [{ date: today }] })).data.booking;
+  await c.post(`/api/bookings/${booking.id}/links`, { type: 'other', url: 'https://drive.google.com/x' });
+  const backup = Buffer.from(await (await c.raw('/api/backup')).arrayBuffer());
+  const file = path.join(os.tmpdir(), `ebilling-test-${process.pid}-${Date.now()}.db`);
+  const edit = (sql) => {
+    fs.writeFileSync(file, backup);
+    const db = new DatabaseSync(file, { enableForeignKeyConstraints: false });
+    try {
+      db.exec(sql);
+    } finally {
+      db.close();
+    }
+    return fs.readFileSync(file);
+  };
+  try {
+    // Links that aren't web links are dropped on the way in, as when typed into the app.
+    const changed = edit(`UPDATE businesses SET review_url = 'javascript:alert(1)', website = 'javascript:alert(1)', upi_id = '<b>';
+      UPDATE bookings SET links = '[{"id":"a","type":"other","url":"javascript:alert(1)"},{"id":"b","type":"other","url":"https://ok.example.com/f"}]'`);
+    const checked = await c.send('/api/backup/check', changed);
+    assert.equal(checked.status, 200, JSON.stringify(checked.data));
+    const res = await c.post('/api/backup/restore', { upload: checked.data.upload });
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    assert.deepEqual([res.data.business.review_url, res.data.business.website, res.data.business.upi_id], ['', '', '']);
+    const [bk] = (await c.get(`/api/bookings?today=${today}`)).data.bookings;
+    assert.deepEqual(bk.links.map((l) => l.url), ['https://ok.example.com/f']);
+
+    // A file with a trigger, or not made by the app, isn't taken; one with a payment for a bill it lacks isn't restored.
+    assert.equal((await c.send('/api/backup/check', edit('CREATE TRIGGER t AFTER INSERT ON products BEGIN SELECT 1; END'))).status, 400);
+    assert.equal((await c.send('/api/backup/check', edit("UPDATE ebilling_backup SET value = 'other' WHERE key = 'app'"))).status, 400);
+    const orphan = await c.send('/api/backup/check', edit(`INSERT INTO payments (business_id, bill_id, amount, method, paid_on)
+      SELECT id, 999999, 100, 'cash', '2026-01-01' FROM businesses`));
+    assert.equal(orphan.status, 200, JSON.stringify(orphan.data));
+    const refused = await c.post('/api/backup/restore', { upload: orphan.data.upload });
+    assert.equal(refused.status, 400);
+    assert.match(refused.data.error.message, /damaged/);
+    assert.equal((await c.get(`/api/bookings?today=${today}`)).data.bookings.length, 1, 'nothing changed');
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test('customers export: every customer with their details and bill totals, for Excel', async () => {
+  const c = await newBusiness();
+  const p = await newProduct(c, { selling_price: 100000, tax_rate: 0 });
+  await c.post('/api/customers', { name: 'Zoya Khan', phone: '98290 11111', email: 'zoya@example.com', address: 'B L Jangid Market\nPaota, Jaipur' });
+  const bill = (await c.post('/api/bills', { bill_date: today, customer_name: 'Asha Verma', customer_phone: '98290 22222', items: [line(p, 1)] })).data.bill;
+  await c.post(`/api/bills/${bill.id}/finalize`, { payment: { amount: 40000, method: 'cash' } });
+  await c.post('/api/bookings', { client_name: 'Asha Verma', client_whatsapp: '98290 22222', schedule: [{ date: inDays(3) }] });
+
+  await c.post('/api/customers', { name: '=1+2 & Co <Ltd>', phone: '+91 98290 33333' });
+
+  const res = await c.raw('/api/reports/export?type=customers&from=2000-01-01&to=2000-01-02');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.match(res.headers.get('content-disposition'), /^attachment; filename="test-shop-\d+-customers-\d{4}-\d{2}-\d{2}\.xlsx"$/);
+  const files = unzip(Buffer.from(await res.arrayBuffer()));
+  assert.deepEqual(Object.keys(files).sort(), ['[Content_Types].xml', '_rels/.rels', 'xl/_rels/workbook.xml.rels', 'xl/styles.xml',
+    'xl/workbook.xml', 'xl/worksheets/sheet1.xml']);
+  assert.match(files['xl/workbook.xml'], /<sheet name="Customers"/);
+  const sheet = files['xl/worksheets/sheet1.xml'];
+  const [head, ...rows] = [...sheet.matchAll(/<row r="\d+">(.*?)<\/row>/g)].map(([, row]) => Object.fromEntries(
+    [...row.matchAll(/<c r="([A-Z]+)\d+"[^>]*>(?:<is><t[^>]*>(.*?)<\/t><\/is>|<v>(.*?)<\/v>)<\/c>/g)]
+      .map(([, col, text, num]) => [col, text ?? Number(num)])));
+  assert.deepEqual(Object.values(head), ['Customer', 'WhatsApp', 'Email', 'Address', 'Bills', 'Total Billed (INR)', 'Paid (INR)',
+    'Balance (INR)', 'Last Bill Date', 'Bookings', 'Customer Since']);
+  assert.equal(rows.length, 3, 'every customer, whatever the dates');
+  // Text is text, never a formula, and a number keeps its + with no apostrophe.
+  assert.equal(rows[0].A, '=1+2 &amp; Co &lt;Ltd&gt;');
+  assert.match(rows[0].B, /^\+91 ?98290 ?33333$/);
+  assert.match(sheet, /<c r="A2" t="inlineStr">/);
+  const { K: since, ...asha } = rows[1];
+  assert.match(since, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(asha.B, /22222$/);
+  assert.deepEqual({ ...asha, B: '' }, { A: 'Asha Verma', B: '', E: 1, F: 1000, G: 400, H: 600, I: today, J: 1 }, 'money as numbers');
+  assert.match(sheet, /<c r="F3" s="2"><v>1000<\/v><\/c>/, 'shown with 2 decimals');
+  assert.deepEqual([rows[2].A, rows[2].C, rows[2].D, rows[2].E, rows[2].H], ['Zoya Khan', 'zoya@example.com', 'B L Jangid Market, Paota, Jaipur', 0, 0]);
+});
+
+test('account: the owner changes the email they sign in with, checked with their password', async () => {
+  const c = await newBusiness();
+  const before = (await c.get('/api/auth/me')).data.user.email;
+  seq++;
+  const next = `New.Owner${seq}@Test.Example`;
+  const change = (body) => c.post('/api/auth/email', body);
+  assert.equal((await change({ email: next })).data.error.field, 'current_password', 'the password is required');
+  let r = await change({ email: next, current_password: 'wrong-password' });
+  assert.equal(r.status, 400);
+  assert.equal(r.data.error.field, 'current_password');
+  assert.equal((await change({ email: 'not-an-email', current_password: 'password123' })).data.error.field, 'email');
+  const other = await newBusiness();
+  r = await change({ email: (await other.get('/api/auth/me')).data.user.email, current_password: 'password123' });
+  assert.equal(r.status, 409, 'another login has it');
+  assert.equal(r.data.error.field, 'email');
+
+  r = await change({ email: next, current_password: 'password123' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.user.email, next.toLowerCase());
+  assert.equal((await c.get('/api/auth/me')).data.user.email, next.toLowerCase(), 'still signed in');
+  assert.equal((await client().post('/api/auth/login', { email: before, password: 'password123' })).status, 401, 'the old email no longer signs in');
+  assert.equal((await client().post('/api/auth/login', { email: next, password: 'password123' })).status, 200);
+
+  // A team login's email is the owner's to set.
+  seq++;
+  const teamEmail = `team${seq}@test.example`;
+  await c.post('/api/settings/team-logins', { name: 'Team', email: teamEmail, password: 'teampass123' });
+  const t = client();
+  await t.post('/api/auth/login', { email: teamEmail, password: 'teampass123' });
+  assert.equal((await t.post('/api/auth/email', { email: `x${seq}@test.example`, current_password: 'teampass123' })).status, 403);
 });

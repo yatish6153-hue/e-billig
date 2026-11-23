@@ -1,20 +1,26 @@
 // The team's view: all a team login can reach (Settings → Team login). It shows the jobs in Tracking with just what's
 // needed to find one and say where it is: the bill number, the customer's name and the last 4 digits of their mobile,
-// the photos, what was ordered, the stage and what is still due. No prices, totals or payments, and nothing can be
-// changed from here. The search and filters are Tracking's own (routes/tracking.js#findJobs).
+// the photos, what was ordered, the stage and what is still due. No prices, totals or payments. The one thing the
+// team can change is to add the customer's photo to a job (never remove one: that's the owner's). The search and
+// filters are Tracking's own (routes/tracking.js#findJobs).
 import express from 'express';
 import { get } from '../db.js';
 import * as v from '../util.js';
 import { findJobs } from './tracking.js';
-import { photoFile, sendPhoto } from '../services/photos.js';
+import { photoFile, sendPhoto, addPhoto, listPhotos } from '../services/photos.js';
 import { getLogo } from '../services/billing.js';
 
 const router = express.Router();
 
+/** A job's photos through the team's own links. */
+const teamPhotos = (jobId, photos) => photos.map((p) => {
+  const url = `/api/view/jobs/${jobId}/photos/${p.id}`;
+  return { id: p.id, url, thumb_url: `${url}/thumb` };
+});
+
 /** A job as the team sees it. */
 function teamJob(j) {
   const digits = String(j.customer_phone || '').replace(/\D/g, '');
-  const photos = `/api/view/jobs/${j.id}/photos`;
   return {
     id: j.id,
     invoice_no: j.invoice_no,
@@ -28,7 +34,7 @@ function teamJob(j) {
     currency: j.currency,
     is_demo: j.is_demo,
     items: j.items,
-    photos: j.photos.map((p) => ({ id: p.id, url: `${photos}/${p.id}`, thumb_url: `${photos}/${p.id}/thumb` })),
+    photos: teamPhotos(j.id, j.photos),
   };
 }
 
@@ -52,6 +58,13 @@ const photoRoute = (thumb) => (req, res) => {
 };
 router.get('/jobs/:id/photos/:photoId', photoRoute(false));
 router.get('/jobs/:id/photos/:photoId/thumb', photoRoute(true));
+
+/** The team adds the customer's photo to a job on its list (taken on the spot, or from the gallery). */
+router.post('/jobs/:id/photos', (req, res) => {
+  const jobId = trackedJob(req);
+  addPhoto(req.businessId, req.user.id, jobId, req.body || {});
+  res.status(201).json({ photos: teamPhotos(jobId, listPhotos(req.businessId, jobId)) });
+});
 
 // The business's logo, for the team's menu.
 router.get('/logo', (req, res) => {

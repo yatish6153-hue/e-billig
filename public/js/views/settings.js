@@ -3,7 +3,8 @@ import { html, setHtml, formData, on } from '../lib/dom.js';
 import { openNameListEditor, editExpenseTypes } from '../components/name-list.js';
 import { icon } from '../lib/icons.js';
 import { toast, toastError, confirmDialog, busy, showFormError, clearErrors, showFieldError, openModal, loading } from '../lib/ui.js';
-import { CURRENCIES, formatMoney, invoiceNumber } from '/shared/format.js';
+import { navigate } from '../lib/router.js';
+import { CURRENCIES, formatMoney, formatDateTime, invoiceNumber } from '/shared/format.js';
 
 const BILL_COLORS = [
   ['#f26b1d', 'Studio orange'], ['#e11d48', 'Rose'], ['#7c3aed', 'Violet'],
@@ -131,6 +132,20 @@ export default async function settings(el, { app }) {
         </div>
       </section>
 
+      <section class="card" id="backup" style="margin-top:16px">
+        <div class="form-section">
+          <h3>Backup &amp; restore</h3>
+          <p class="muted">Download a copy of everything in eBilling: bills, customers, inventory, bookings, the day book, photos
+            and settings. Keep it somewhere safe, like Google Drive or a pen drive. If something is deleted by mistake, restore that copy here.</p>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <a class="btn btn-primary" href="/api/backup" download>${icon('download')}Download backup</a>
+            <button type="button" class="btn" data-action="restore-backup">${icon('upload')}Restore from a backup</button>
+          </div>
+          <input type="file" class="hidden" data-backup-input>
+          <p class="field-hint" style="margin:10px 0 0">Logins and passwords aren’t in the backup, and restoring one doesn’t change them.</p>
+        </div>
+      </section>
+
       <section class="card" id="demo" style="margin-top:16px">
         <div class="form-section">
           <h3>Demo data</h3>
@@ -145,30 +160,43 @@ export default async function settings(el, { app }) {
       </section>
 
       <section class="card" style="margin-top:16px">
-        <form class="form-section" data-password novalidate>
-          <h3>Account</h3><p class="muted">Signed in as <strong>${app.me.user.email}</strong>.</p>
-          <div class="form-grid cols-3">
-            <div class="field"><label>Current password</label><input class="input" type="password" name="current_password" autocomplete="current-password"></div>
-            <div class="field"><label>New password</label><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="8"></div>
-            <div class="field"><label>Confirm new password</label><input class="input" type="password" name="confirm_password" autocomplete="new-password"></div>
-          </div>
-          <div style="margin-top:14px"><button type="submit" class="btn">Change password</button></div>
-        </form>
+        <div class="form-section">
+          <h3>Account</h3><p class="muted">Signed in as <strong>${app.me.user.email}</strong>. This is the email you sign in with,
+            not the one printed on bills (that's in Business profile).</p>
+          <form data-login-email novalidate>
+            <div class="form-grid">
+              <div class="field"><label>New login email</label>
+                <input class="input" type="email" name="email" maxlength="254" autocomplete="username" placeholder="e.g. you@yourstudio.com"></div>
+              <div class="field"><label>Current password</label><input class="input" type="password" name="current_password" autocomplete="current-password"></div>
+            </div>
+            <div style="margin-top:14px"><button type="submit" class="btn">Change login email</button></div>
+          </form>
+          <hr class="divider" style="margin:20px 0">
+          <form data-password novalidate>
+            <div class="form-grid cols-3">
+              <div class="field"><label>Current password</label><input class="input" type="password" name="current_password" autocomplete="current-password"></div>
+              <div class="field"><label>New password</label><input class="input" type="password" name="new_password" autocomplete="new-password" minlength="8"></div>
+              <div class="field"><label>Confirm new password</label><input class="input" type="password" name="confirm_password" autocomplete="new-password"></div>
+            </div>
+            <div style="margin-top:14px"><button type="submit" class="btn">Change password</button></div>
+          </form>
+        </div>
       </section>
 
       <section class="card" id="team-login" style="margin-top:16px">
         <div class="form-section">
           <h3>Team login</h3>
-          <p class="muted">A sign-in for your team that shows only <strong>Tracking</strong>, to look at: the bill number, the customer’s
+          <p class="muted">A sign-in for your team that shows only <strong>Tracking</strong>: the bill number, the customer’s
             name, the last 4 digits of their mobile, the photos, what was ordered, the stage and the amount due.
-            No prices, totals or payments, and nothing can be changed.</p>
+            No prices, totals or payments. Your team can add the customer’s photo to a job (take it or pick it from the gallery),
+            but can’t remove photos or change anything else.</p>
           <div data-team-logins>${loading()}</div>
         </div>
       </section>`);
     bind();
     loadTeamLogins();
     loadLists();
-    if (location.hash === '#demo' || location.hash === '#lists') {
+    if (['#demo', '#lists', '#backup'].includes(location.hash)) {
       setTimeout(() => el.querySelector(location.hash)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     }
   }
@@ -338,6 +366,25 @@ export default async function settings(el, { app }) {
       }
     });
 
+    // Restore: upload the file to check it, show what's in it, and only replace everything once confirmed.
+    const backupInput = el.querySelector('[data-backup-input]');
+    const restoreButton = el.querySelector('[data-action=restore-backup]');
+    restoreButton.addEventListener('click', () => backupInput.click());
+    backupInput.addEventListener('change', async () => {
+      const file = backupInput.files[0];
+      backupInput.value = '';
+      if (!file) return;
+      const checked = await busy(restoreButton, async () => {
+        try {
+          return await api('/backup/check', { method: 'POST', file });
+        } catch (err) {
+          toastError(err);
+          return null;
+        }
+      });
+      if (checked) confirmRestore(checked);
+    });
+
     el.querySelector('[data-action=remove-demo]')?.addEventListener('click', async (e) => {
       const ok = await confirmDialog({
         title: 'Remove all demo data?',
@@ -371,6 +418,26 @@ export default async function settings(el, { app }) {
       });
     });
 
+    const loginEmail = el.querySelector('[data-login-email]');
+    loginEmail.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearErrors(loginEmail);
+      const d = formData(loginEmail);
+      if (!d.email.trim()) return showFieldError(loginEmail, 'email', 'Enter the new login email.');
+      if (!d.current_password) return showFieldError(loginEmail, 'current_password', 'Enter your current password.');
+      await busy(e.submitter, async () => {
+        try {
+          const res = await api('/auth/email', { method: 'POST', body: d });
+          app.setMe(res);
+          toast(`Login email changed. Sign in with ${res.user.email} from now on.`);
+          render();
+        } catch (err) {
+          showFormError(loginEmail, err);
+        }
+      });
+      return undefined;
+    });
+
     const pw = el.querySelector('[data-password]');
     pw.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -389,6 +456,38 @@ export default async function settings(el, { app }) {
         }
       });
       return undefined;
+    });
+  }
+
+  function confirmRestore({ upload, backup }) {
+    const c = backup.counts;
+    const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+    const made = backup.created_at ? formatDateTime(backup.created_at) : 'an unknown date';
+    openModal({
+      title: 'Restore this backup?',
+      form: true,
+      body: html`
+        <p>The backup of <strong>${backup.business_name}</strong> made on <strong>${made}</strong> has
+          ${count(c.bills, 'bill')}, ${count(c.customers, 'customer')}, ${count(c.products, 'inventory item')},
+          ${count(c.bookings, 'booking')}, ${count(c.day_entries, 'day book entry', 'day book entries')} and ${count(c.photos, 'photo')}.</p>
+        <div class="alert alert-warn">${icon('alert')}<div>Everything in eBilling now is replaced by this backup, so anything
+          added or changed after ${made} is lost. <a href="/api/backup" download>Download a backup of how it is now</a> first if you may need it.</div></div>`,
+      footer: html`<button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn btn-danger-solid">Restore backup</button>`,
+      onSubmit: async (form, m, submitter) => {
+        await busy(submitter, async () => {
+          try {
+            const res = await api('/backup/restore', { method: 'POST', body: { upload } });
+            m.close();
+            app.setMe(res);
+            const r = res.restored;
+            toast(`Backup restored: ${count(r.bills, 'bill')}, ${count(r.customers, 'customer')} and ${count(r.bookings, 'booking')}.`);
+            navigate('/dashboard');
+          } catch (err) {
+            toastError(err);
+          }
+        });
+      },
     });
   }
 
@@ -432,7 +531,7 @@ export default async function settings(el, { app }) {
     const modal = openModal({
       title: 'Add a team login',
       form: true,
-      body: html`<p class="muted small" style="margin-top:0">Only Tracking, to look at. The email doesn’t need to be a real inbox,
+      body: html`<p class="muted small" style="margin-top:0">Only Tracking, where they can also add the customer’s photo. The email doesn’t need to be a real inbox,
           e.g. team@yourstudio.com: it’s what your team types to sign in.</p>
         <div class="form-grid">
           <div class="field span-all"><label>Name <span class="req">*</span></label>

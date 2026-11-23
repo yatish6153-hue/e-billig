@@ -53,7 +53,7 @@ export default async function authView(root, { mode, query, onAuthed }) {
   setHtml(root, html`
     <div class="auth">
       <section class="auth-side">
-        <div class="logo"><span class="brand-mark">${icon('rupee')}</span>eBilling</div>
+        <div class="logo"><img class="brand-icon" src="/icons/icon-192.png" alt="" width="40" height="40">eBilling</div>
         <div>
           <h1>Bills, stock and payments — in one simple place.</h1>
           <p>Create bills in seconds, keep inventory accurate automatically, and share bills on WhatsApp.</p>

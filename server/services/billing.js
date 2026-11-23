@@ -330,28 +330,33 @@ export function cancelBill(businessId, userId, billId, { reason = '' } = {}) {
       when, cancelReason, when, billId, businessId,
     );
     if (res.changes !== 1) throw v.conflict('This bill is already cancelled.');
-
-    let restored = 0;
-    if (bill.stock_applied) {
-      const sales = all("SELECT product_id, quantity FROM stock_movements WHERE bill_id = ? AND type = 'sale'", billId);
-      for (const s of sales) {
-        applyStockChange(businessId, s.product_id, -s.quantity, 'sale_cancel', {
-          billId, userId, note: `Invoice ${bill.invoice_no} cancelled`, at: when,
-        });
-        restored++;
-      }
-      run('UPDATE bills SET stock_applied = 0 WHERE id = ?', billId);
-    }
-    return { restored };
+    return { restored: putStockBack(businessId, userId, bill, `Invoice ${bill.invoice_no} cancelled`, when) };
   });
 }
 
-export function deleteDraft(businessId, billId) {
+/** Put back exactly the stock a bill's sale removed. Must run inside tx(). Returns how many products changed. */
+function putStockBack(businessId, userId, bill, note, when) {
+  if (!bill.stock_applied) return 0;
+  const sales = all("SELECT product_id, quantity FROM stock_movements WHERE bill_id = ? AND type = 'sale'", bill.id);
+  for (const s of sales) {
+    applyStockChange(businessId, s.product_id, -s.quantity, 'sale_cancel', { billId: bill.id, userId, note, at: when });
+  }
+  run('UPDATE bills SET stock_applied = 0 WHERE id = ?', bill.id);
+  return sales.length;
+}
+
+/**
+ * Delete a bill of any status. A finalized bill's stock goes back first, as when cancelling. Its items, payments,
+ * photos and work history go with it (ON DELETE CASCADE), so its money leaves the day book and reports too; its
+ * stock movements stay, unlinked. The invoice number is not given out again.
+ */
+export function deleteBill(businessId, userId, billId) {
   return tx(() => {
-    const bill = get('SELECT status FROM bills WHERE id = ? AND business_id = ?', billId, businessId);
+    const bill = get('SELECT * FROM bills WHERE id = ? AND business_id = ?', billId, businessId);
     if (!bill) throw v.notFound('Bill');
-    if (bill.status !== 'draft') throw v.conflict('Only drafts can be deleted. Cancel a finalized bill instead.');
-    run('DELETE FROM bills WHERE id = ?', billId);
+    const restored = putStockBack(businessId, userId, bill, `Invoice ${bill.invoice_no} deleted`, nowIso());
+    run('DELETE FROM bills WHERE id = ? AND business_id = ?', billId, businessId);
+    return { restored };
   });
 }
 

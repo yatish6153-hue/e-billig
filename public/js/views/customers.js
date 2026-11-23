@@ -4,7 +4,8 @@ import { icon } from '../lib/icons.js';
 import { demoBadge, pager, loading } from '../lib/ui.js';
 import { navigate } from '../lib/router.js';
 import { openCustomerForm } from '../components/customer-form.js';
-import { formatDate } from '/shared/format.js';
+import { whatsappButton, onWhatsAppButton } from '../components/share.js';
+import { formatDate, whatsappNumber } from '/shared/format.js';
 
 export default async function customers(el, { app, query }) {
   app.setTitle('Customers');
@@ -14,7 +15,9 @@ export default async function customers(el, { app, query }) {
   setHtml(el, html`
     <div class="page-header">
       <div><h1>Customers</h1><div class="subtitle">Contacts, invoice history and outstanding balances.</div></div>
-      <div class="page-actions"><button type="button" class="btn btn-primary" data-action="add">${icon('userPlus')}Add customer</button></div>
+      <div class="page-actions">
+        <a class="btn" href="/api/reports/export?type=customers" download title="Every customer with their details, bills and balance, as a file Excel opens">${icon('download')}Download Excel</a>
+        <button type="button" class="btn btn-primary" data-action="add">${icon('userPlus')}Add customer</button></div>
     </div>
     <div class="toolbar">
       <div class="input-group grow">${icon('search')}<input class="input" type="search" data-search placeholder="Search name, WhatsApp number or email" value="${state.q}"></div>
@@ -57,7 +60,9 @@ export default async function customers(el, { app, query }) {
         <tbody>${data.customers.map((c) => html`
           <tr class="clickable" data-href="/customers/${c.id}">
             <td class="td-main"><span class="cell-main">${c.name}</span> ${demoBadge(c.is_demo)}${c.email ? html`<div class="cell-sub">${c.email}</div>` : ''}</td>
-            <td data-label="WhatsApp">${c.phone || html`<span class="muted">—</span>`}</td>
+            <td data-label="WhatsApp">${c.phone ? html`<span class="wa-cell">${c.phone}
+              ${whatsappButton(whatsappNumber(c.phone, app.me.business.currency), { name: c.name, demo: c.is_demo })}</span>`
+              : html`<span class="muted">—</span>`}</td>
             <td data-label="Bills" class="r">${c.bills_count}</td>
             <td data-label="Last bill">${c.last_bill_date ? formatDate(c.last_bill_date) : html`<span class="muted">—</span>`}</td>
             <td data-label="Total billed" class="r">${money(c.total_billed)}</td>
@@ -88,7 +93,10 @@ export default async function customers(el, { app, query }) {
     const c = await openCustomerForm();
     if (c) navigate(`/customers/${c.id}`);
   });
-  on(el, 'click', 'tr[data-href]', (e, tr) => navigate(tr.dataset.href));
+  on(el, 'click', '[data-wa]', (e, b) => onWhatsAppButton(b));
+  on(el, 'click', 'tr[data-href]', (e, tr) => {
+    if (!e.target.closest('[data-wa]')) navigate(tr.dataset.href);
+  });
 
   await load();
   return () => search.cancel();

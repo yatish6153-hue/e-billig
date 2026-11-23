@@ -2,7 +2,9 @@ import express from 'express';
 import { get, all, run, tx, nowIso } from '../db.js';
 import * as v from '../util.js';
 import { hashPassword } from '../auth.js';
-import { getBusiness, serializeBusiness, productCategories } from '../services/business.js';
+import {
+  getBusiness, serializeBusiness, productCategories, billColor, upiId, website, reviewUrl, invoicePrefix,
+} from '../services/business.js';
 import { CURRENCIES } from '../../shared/format.js';
 import { seedDemoCatalog, removeDemoData } from '../seed.js';
 import { mePayload, password } from './auth.js';
@@ -10,60 +12,13 @@ import { mePayload, password } from './auth.js';
 const router = express.Router();
 const MAX_LOGO_BYTES = 1024 * 1024;
 
-function billColor(value) {
-  const s = String(value || '#f26b1d').trim();
-  if (!/^#[0-9a-fA-F]{6}$/.test(s)) throw v.badRequest('Choose a bill colour like #f26b1d.', 'bill_color');
-  return s.toLowerCase();
-}
-
-/** The UPI ID customers pay the balance to, like yourname@okaxis. */
-function upiId(value) {
-  const s = v.text(value, 'upi_id', 'UPI ID', { max: 100 }).replace(/\s/g, '').toLowerCase();
-  if (s && !/^[a-z0-9._-]{2,256}@[a-z][a-z0-9.-]{1,63}$/.test(s)) throw v.badRequest('Enter a UPI ID like yourname@okaxis.', 'upi_id');
-  return s;
-}
-
-/** A website like www.deveshstudio.com (https:// is optional and dropped); the bill links it over https. */
-function website(value) {
-  const s = v.text(value, 'website', 'Website', { max: 120 }).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  if (s && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,24}(\/[^\s<>"']*)?$/i.test(s)) {
-    throw v.badRequest('Enter a website like www.yourstudio.com.', 'website');
-  }
-  // The domain in lower case; a path keeps its case.
-  const slash = s.indexOf('/');
-  return slash < 0 ? s.toLowerCase() : s.slice(0, slash).toLowerCase() + s.slice(slash);
-}
-
-/**
- * The link customers review the business at (Google's "share" or g.page link, say), printed on bills with a
- * QR code. https:// is added when left off; anything but an http(s) web address is refused.
- */
-function reviewUrl(value) {
-  let s = v.text(value, 'review_url', 'Review link', { max: 300 });
-  if (!s) return '';
-  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
-  let url = null;
-  try {
-    url = new URL(s);
-  } catch {
-    // Not a web address; refused below.
-  }
-  if (!url || /[\s<>"'`\\]/.test(s) || url.username || url.password || !/^[a-z0-9.-]+\.[a-z]{2,24}$/i.test(url.hostname)) {
-    throw v.badRequest('Enter your review link, like https://g.page/r/…/review.', 'review_url');
-  }
-  return s;
-}
-
 router.get('/', (req, res) => {
   res.json({ business: serializeBusiness(getBusiness(req.businessId)) });
 });
 
 router.put('/', (req, res) => {
   const b = req.body || {};
-  const prefix = v.text(b.invoice_prefix, 'invoice_prefix', 'Invoice prefix', { max: 12 });
-  if (prefix && !/^[A-Za-z0-9/_#.-]+$/.test(prefix)) {
-    throw v.badRequest('Invoice prefix can use letters, numbers and - / _ # . only.', 'invoice_prefix');
-  }
+  const prefix = invoicePrefix(b.invoice_prefix);
   const d = {
     name: v.text(b.name, 'name', 'Business name', { max: 120, required: true }),
     address: v.text(b.address, 'address', 'Address', { max: 500, multiline: true }),

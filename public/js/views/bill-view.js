@@ -60,7 +60,9 @@ export default async function billView(el, { app, params }) {
               <button type="button" data-action="regenerate">${icon('refresh')}Make a new link</button>
               <button type="button" data-action="revoke">${icon('ban')}Turn off the link</button>` : ''}
             <button type="button" data-action="duplicate">${icon('copy')}Duplicate as new bill</button>
-            ${isFinal ? html`<hr><button type="button" class="danger" data-action="cancel">${icon('x')}Cancel bill</button>` : ''}
+            <hr>
+            ${isFinal ? html`<button type="button" class="danger" data-action="cancel">${icon('x')}Cancel bill</button>` : ''}
+            <button type="button" class="danger" data-action="delete">${icon('trash')}Delete bill</button>
           </div>
         </details>`;
 
@@ -247,11 +249,15 @@ export default async function billView(el, { app, params }) {
         }
         break;
       case 'delete': {
-        const ok = await confirmDialog({ title: 'Delete this draft?', message: 'This removes the draft. Stock is not affected.', confirmText: 'Delete draft', danger: true });
+        const isDraft = bill.status === 'draft';
+        const ok = await confirmDialog(isDraft
+          ? { title: 'Delete this draft?', message: 'This removes the draft. Stock is not affected.', confirmText: 'Delete draft', danger: true }
+          : deleteQuestion(bill));
         if (!ok) return;
         try {
-          await api(`/bills/${bill.id}`, { method: 'DELETE' });
-          toast('Draft deleted.');
+          const res = await api(`/bills/${bill.id}`, { method: 'DELETE' });
+          const n = res.restored_products;
+          toast(isDraft ? 'Draft deleted.' : `${bill.invoice_no} deleted.${n ? ` Stock put back for ${n} item${n === 1 ? '' : 's'}.` : ''}`);
           navigate('/bills');
         } catch (err) {
           toastError(err);
@@ -274,6 +280,23 @@ export default async function billView(el, { app, params }) {
       default:
     }
   });
+
+  /** What deleting a created (finalized or cancelled) bill does, asked before it happens. */
+  function deleteQuestion(bill) {
+    const money = (v) => formatMoney(v, bill.currency);
+    const isFinal = bill.status === 'finalized';
+    return {
+      title: `Delete ${bill.invoice_no}?`,
+      message: 'The bill is removed for good. This can’t be undone.',
+      body: html`<ul class="small" style="margin:0;padding-left:18px">
+        ${isFinal ? html`<li>Everything on it goes back into stock.</li>` : ''}
+        ${bill.amount_paid > 0 ? html`<li><strong>${money(bill.amount_paid)}</strong> received on it comes off the day book and reports.</li>` : ''}
+        <li>Its photos and work history are deleted, and the customer’s link stops working.</li>
+        <li>The number ${bill.invoice_no} won’t be used again.${isFinal ? ' To keep a record of the bill, cancel it instead.' : ''}</li></ul>`,
+      confirmText: 'Delete bill',
+      danger: true,
+    };
+  }
 
   function openCancelDialog() {
     const bill = data.bill;

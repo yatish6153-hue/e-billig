@@ -1,6 +1,7 @@
 // Tracking for a team login (Settings → Team login): find a job by bill number, name or mobile number and see where
 // it is. Each row shows the customer's photo, the bill number and name, the last 4 digits of the mobile, what was
-// ordered, the stage and what is still due. To look at only: no prices, totals or payments, and nothing to change.
+// ordered, the stage and what is still due. No prices, totals or payments. The team can add the customer's photo
+// (camera or gallery) but not remove one, and nothing else can be changed.
 import { api, buildQuery } from '../lib/api.js';
 import { html, setHtml, on, debounce } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
@@ -29,7 +30,7 @@ export default async function teamJobs(el, { app, query }) {
 
   setHtml(el, html`
     <div class="page-header">
-      <div><h1>Tracking</h1><div class="subtitle">Find a job by bill number, name or mobile number. To look at only.</div></div>
+      <div><h1>Tracking</h1><div class="subtitle">Find a job by bill number, name or mobile number. Tap the photo box to add the customer’s photo.</div></div>
     </div>
     <div class="stage-chips" data-counts role="tablist" aria-label="Show jobs"></div>
     <div class="track-filters">
@@ -73,7 +74,7 @@ export default async function teamJobs(el, { app, query }) {
   function row(j) {
     return html`
       <div class="track-row team-row" data-id="${j.id}">
-        <div class="tr-photo">${photoThumb(j.photos, { readOnly: true })}</div>
+        <div class="tr-photo">${photoThumb(j.photos)}</div>
         <div class="tr-main">
           <div class="tr-top"><span class="tr-no">${j.invoice_no}</span>
             <span class="tr-name">${j.customer_name || 'Walk-in customer'}</span></div>
@@ -115,7 +116,17 @@ export default async function teamJobs(el, { app, query }) {
   });
   on(el, 'click', '[data-photos]', (e, b) => {
     const job = data.jobs.find((j) => String(j.id) === b.closest('[data-id]')?.dataset.id);
-    if (job) openPhotos({ bill: job, photos: job.photos, readOnly: true });
+    if (!job) return;
+    openPhotos({
+      bill: job,
+      photos: job.photos,
+      addPath: `/view/jobs/${job.id}/photos`,
+      canRemove: false,
+      onChange: (photos) => {
+        job.photos = photos;
+        renderJobs();
+      },
+    });
   });
 
   const search = debounce(() => load(), 250);

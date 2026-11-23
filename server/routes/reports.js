@@ -5,6 +5,8 @@ import { serializeBill } from '../services/billing.js';
 import { serializeProduct, LOW_STOCK_SQL } from '../services/inventory.js';
 import { stageCounts } from '../services/tracking.js';
 import { getBusiness } from '../services/business.js';
+import { AGGREGATES as CUSTOMER_TOTALS } from './customers.js';
+import { xlsxFile } from '../services/xlsx.js';
 import { isoDate, addDays, PAYMENT_METHODS, DISPLAY_STATUS_LABELS, DAY_ENTRY_KINDS, billDisplayStatus } from '../../shared/format.js';
 import { BOOKING_PAY_METHODS, bookingNumber } from '../../shared/bookings.js';
 
@@ -222,12 +224,14 @@ router.get('/sales', (req, res) => {
 });
 
 router.get('/export', (req, res) => {
-  const type = v.oneOf(req.query.type || 'bills', ['bills', 'items', 'inventory', 'payments', 'daybook'], 'type', 'Export type');
+  const type = v.oneOf(req.query.type || 'bills', ['bills', 'items', 'inventory', 'payments', 'daybook', 'customers'], 'type', 'Export type');
+  const undated = type === 'inventory' || type === 'customers'; // everything as it is today, whatever the dates
   const business = getBusiness(req.businessId);
   const range = dateRange(req.query);
   const m = v.major;
   let header;
   let rows;
+  let columns = null; // set for an Excel (.xlsx) export instead of a CSV
 
   if (type === 'bills') {
     header = ['Invoice No', 'Bill Date', 'Customer', 'WhatsApp', 'Status', 'Payment Status',
@@ -272,6 +276,28 @@ router.get('/export', (req, res) => {
       x.entry_date, DAY_ENTRY_KINDS[x.kind], x.details, x.category, PAYMENT_METHODS[x.method] || x.method,
       x.kind === 'expense' ? '' : m(x.amount), x.kind === 'expense' ? m(x.amount) : '',
     ]);
+  } else if (type === 'customers') {
+    // Every customer, A to Z, with the same totals as the Customers page (created bills only). An Excel file, not a
+    // CSV, so a WhatsApp number like +91 98290 12345 shows as typed.
+    columns = [
+      { title: 'Customer', type: 'text', width: 28 }, { title: 'WhatsApp', type: 'text', width: 18 },
+      { title: 'Email', type: 'text', width: 30 }, { title: 'Address', type: 'text', width: 44 },
+      { title: 'Bills', type: 'number', width: 8 }, { title: `Total Billed (${business.currency})`, type: 'money', width: 16 },
+      { title: `Paid (${business.currency})`, type: 'money', width: 14 }, { title: `Balance (${business.currency})`, type: 'money', width: 14 },
+      { title: 'Last Bill Date', type: 'text', width: 14 }, { title: 'Bookings', type: 'number', width: 10 },
+      { title: 'Customer Since', type: 'text', width: 15 },
+    ];
+    const customers = all(
+      `SELECT c.*, ${CUSTOMER_TOTALS},
+              (SELECT COUNT(*) FROM bookings k WHERE k.customer_id = c.id AND k.status <> 'cancelled') AS bookings
+         FROM customers c LEFT JOIN bills b ON b.customer_id = c.id AND b.business_id = c.business_id
+        WHERE c.business_id = ? GROUP BY c.id ORDER BY c.name COLLATE NOCASE, c.id`,
+      req.businessId,
+    );
+    rows = customers.map((c) => [
+      c.name, c.phone, c.email, c.address.replace(/\s*\n\s*/g, ', '), c.bills_count,
+      m(c.total_billed), m(c.total_paid), m(c.outstanding), c.last_bill_date || '', c.bookings, isoDate(new Date(c.created_at)),
+    ]);
   } else {
     header = ['Item', 'Type', 'SKU', 'Barcode', 'Category', 'Unit', 'Quantity', 'Low-stock Level', 'Purchase Price',
       'Selling Price', 'Stock Value (cost)', 'Status'];
@@ -286,11 +312,17 @@ router.get('/export', (req, res) => {
     });
   }
 
-  const span = type === 'inventory' ? isoDate() : `${range.from || 'start'}_to_${range.to || isoDate()}`;
+  const span = undated ? isoDate() : `${range.from || 'start'}_to_${range.to || isoDate()}`;
   const slug = business.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'business';
+  res.setHeader('Cache-Control', 'private, no-store');
+  if (columns) {
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${slug}-${type}-${span}.xlsx"`);
+    res.send(xlsxFile({ sheet: type[0].toUpperCase() + type.slice(1), columns, rows }));
+    return;
+  }
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${slug}-${type}-${span}.csv"`);
-  res.setHeader('Cache-Control', 'private, no-store');
   res.send(v.toCsv(header, rows));
 });
 

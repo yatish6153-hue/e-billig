@@ -17,7 +17,8 @@ function readCustomer(body) {
 
 const serializeCustomer = (c) => ({ ...c, is_demo: !!c.is_demo });
 
-const AGGREGATES = `
+/** A customer's bill totals, over `bills b` joined to `customers c` (also the customers export in reports.js). */
+export const AGGREGATES = `
   COALESCE(SUM(CASE WHEN b.status = 'finalized' THEN b.total END), 0) AS total_billed,
   COALESCE(SUM(CASE WHEN b.status = 'finalized' THEN b.amount_paid END), 0) AS total_paid,
   COALESCE(SUM(CASE WHEN b.status = 'finalized' THEN b.total - b.amount_paid END), 0) AS outstanding,

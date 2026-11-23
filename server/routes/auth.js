@@ -140,4 +140,28 @@ router.post('/password', requireAuth, ownerOnly, async (req, res) => {
   res.json({ ok: true });
 });
 
+// The email the owner signs in with (Settings → Account), checked with their password. Not the business's email on
+// bills. A team login's email is changed by the owner, by adding the login again.
+router.post('/email', requireAuth, ownerOnly, async (req, res) => {
+  const b = req.body || {};
+  const email = v.email(b.email, 'email', 'New login email', { required: true });
+  if (typeof b.current_password !== 'string' || !b.current_password) {
+    throw v.badRequest('Current password is required.', 'current_password');
+  }
+  const user = get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
+  if (!(await verifyPassword(b.current_password, user.password_hash))) {
+    throw v.badRequest('Current password is incorrect.', 'current_password');
+  }
+  const taken = () => v.conflict('This email is already used to sign in. Choose another one.', { field: 'email' });
+  if (get('SELECT 1 FROM users WHERE email = ? AND id <> ?', email, req.user.id)) throw taken();
+  try {
+    run('UPDATE users SET email = ? WHERE id = ?', email, req.user.id);
+  } catch (err) {
+    // Taken by someone else while the password was being checked.
+    if (/UNIQUE constraint failed: users\.email/.test(err.message)) throw taken();
+    throw err;
+  }
+  res.json(mePayload(req.user.id));
+});
+
 export default router;

@@ -102,10 +102,12 @@ export function photoStrip(photos = []) {
 
 /**
  * The job's photos: one big at a time, the rest small underneath, with buttons to add (camera or gallery; on a
- * computer also paste or drop), open full size and remove. onChange(photos) after each change. readOnly (the team's
- * view) only shows them.
+ * computer also paste or drop), open full size and remove. onChange(photos) after each change. readOnly only shows
+ * them. The team's view adds through its own path (addPath) and can't remove (canRemove: false).
  */
-export function openPhotos({ bill, photos = [], start = 0, onChange, readOnly = false }) {
+export function openPhotos({
+  bill, photos = [], start = 0, onChange, readOnly = false, addPath = `/bills/${bill.id}/photos`, canRemove = true,
+}) {
   let list = photos.slice();
   let index = Math.max(0, Math.min(start, list.length - 1));
   let working = '';
@@ -140,7 +142,7 @@ export function openPhotos({ bill, photos = [], start = 0, onChange, readOnly = 
         <button type="button" class="btn ${p || camera ? '' : 'btn-primary'}" data-add="files" ${working ? 'disabled' : ''}>${icon('imagePlus')}${camera ? 'From gallery' : p ? 'Add more' : 'Choose photos'}</button>
         ${p ? html`<span class="ph-gap"></span>
           <a class="btn btn-ghost" href="${p.url}" target="_blank" rel="noopener">${icon('external')}Full size</a>
-          <button type="button" class="btn btn-ghost btn-danger" data-remove ${working ? 'disabled' : ''}>${icon('trash')}Remove</button>` : ''}
+          ${canRemove ? html`<button type="button" class="btn btn-ghost btn-danger" data-remove ${working ? 'disabled' : ''}>${icon('trash')}Remove</button>` : ''}` : ''}
       </div>`}`);
   }
 
@@ -163,7 +165,7 @@ export function openPhotos({ bill, photos = [], start = 0, onChange, readOnly = 
         working = take.length > 1 ? `Adding photo ${i + 1} of ${take.length}…` : 'Adding the photo…';
         paint();
         const body = await preparePhoto(file);
-        ({ photos: list } = await api(`/bills/${bill.id}/photos`, { method: 'POST', body }));
+        ({ photos: list } = await api(addPath, { method: 'POST', body }));
         added++;
         index = list.length - 1;
         onChange?.(list);
@@ -206,7 +208,7 @@ export function openPhotos({ bill, photos = [], start = 0, onChange, readOnly = 
       index = Number(t.dataset.show);
       paint();
     } else if (t.dataset.add) add(await pickPhotos({ camera: t.dataset.add === 'camera' }));
-    else remove();
+    else if (canRemove) remove();
   });
   modal.el.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') step(-1);

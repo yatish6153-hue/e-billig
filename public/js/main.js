@@ -13,7 +13,7 @@ const app = {
   get business() {
     return this.me.business;
   },
-  /** A team login (Settings → Team login) sees only Tracking, to look at. */
+  /** A team login (Settings → Team login) sees only Tracking, where it can add the customer's photo to a job. */
   get isTeam() {
     return this.me?.user.role === 'team';
   },

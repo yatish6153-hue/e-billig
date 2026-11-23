@@ -31,6 +31,8 @@ function page(title, body) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>${e(title)}</title>
+<link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192">
 <link rel="stylesheet" href="/vendor/inter/index.css">
 <link rel="stylesheet" href="/css/invoice.css">
 </head>

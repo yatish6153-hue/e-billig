@@ -1,6 +1,7 @@
 // Invoice sharing: secure link, clipboard, WhatsApp.
 import { api } from '../lib/api.js';
 import { html, isPhone } from '../lib/dom.js';
+import { icon } from '../lib/icons.js';
 import { copyText, toast } from '../lib/ui.js';
 import { formatMoney, formatDate, whatsappNumber } from '/shared/format.js';
 import { stageInfo } from '/shared/tracking.js';
@@ -89,6 +90,40 @@ export function openWhatsAppApp(phone, text = '') {
     toast(html`WhatsApp app didn’t open? Install WhatsApp for your computer, or
       <a href="${webLink(phone, text)}" target="_blank" rel="noopener noreferrer">open WhatsApp Web</a>.`, 'info', { timeout: 10000 });
   }, 2500);
+}
+
+/**
+ * A WhatsApp chat with this number (international digits, see whatsappNumber), with nothing typed yet: the app on a
+ * phone, the desktop app on a computer (or WhatsApp Web if that doesn't open).
+ */
+export function openWhatsAppChat(phone) {
+  if (!isPhone()) {
+    openWhatsAppApp(phone);
+    return;
+  }
+  const win = window.open('', '_blank');
+  if (win) {
+    win.opener = null;
+    win.location.href = whatsappLink(phone);
+  } else {
+    window.location.href = whatsappLink(phone);
+  }
+}
+
+/** A green WhatsApp button for a customer's number; data-wa holds the number, data-wa-demo marks a sample customer. */
+export function whatsappButton(phone, { name = '', demo = false } = {}) {
+  if (!phone) return '';
+  return html`<button type="button" class="btn btn-whatsapp btn-icon btn-sm wa-chat" data-wa="${phone}" ${demo ? 'data-wa-demo' : ''}
+    title="Message on WhatsApp" aria-label="Message ${name || phone} on WhatsApp">${icon('message', 'sm')}</button>`;
+}
+
+/** What a click on a whatsappButton does. */
+export function onWhatsAppButton(button) {
+  if (button.hasAttribute('data-wa-demo')) {
+    toast('This is a sample (demo) customer, so the number isn’t real. Real customers open in WhatsApp.', 'info');
+    return;
+  }
+  openWhatsAppChat(button.dataset.wa);
 }
 
 /**

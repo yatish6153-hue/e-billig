@@ -270,6 +270,9 @@ select.input { padding-right: 30px; appearance: none; background-image: url("dat
 .table tbody tr.clickable:hover td { background: var(--surface-2); }
 .table .cell-main { font-weight: 600; color: var(--text); }
 .table .cell-sub { color: var(--muted); font-size: 12px; }
+/* A number with its WhatsApp button (Customers). */
+.wa-cell { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+.wa-chat.btn-sm { width: 30px; height: 30px; border-radius: 999px; }
 .table tfoot td { font-weight: 600; background: var(--surface-2); }
 
 /* ---- Badges ------------------------------------------------------------- */
@@ -1386,6 +1389,8 @@ a.stage-chip:hover { text-decoration: none; }
 .auth-side li { display: flex; gap: 10px; align-items: center; }
 .auth-side .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
 .auth-side .logo .brand-mark { background: #fff; color: var(--primary); }
+/* The studio's icon (public/icons), as in the browser tab. */
+.brand-icon { width: 40px; height: 40px; border-radius: 9px; flex-shrink: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
 .auth-main { display: grid; place-items: center; padding: 32px 20px; }
 .auth-card { width: min(420px, 100%); }
 .auth-card h2 { font-size: 22px; margin-bottom: 4px; }

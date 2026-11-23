@@ -4,7 +4,8 @@ import { icon } from '../lib/icons.js';
 import { toast, toastError, confirmDialog, statusBadge, demoBadge } from '../lib/ui.js';
 import { navigate } from '../lib/router.js';
 import { openCustomerForm } from '../components/customer-form.js';
-import { formatDate } from '/shared/format.js';
+import { onWhatsAppButton } from '../components/share.js';
+import { formatDate, whatsappNumber } from '/shared/format.js';
 
 export default async function customerDetail(el, { app, params }) {
   let data = await api(`/customers/${params.id}`);
@@ -21,6 +22,8 @@ export default async function customerDetail(el, { app, params }) {
         <div><div class="row" style="gap:10px"><h1>${c.name}</h1>${demoBadge(c.is_demo)}</div>
           <div class="subtitle">${[c.phone, c.email].filter(Boolean).join(' · ') || 'No contact details'}</div></div>
         <div class="page-actions">
+          ${whatsappNumber(c.phone, app.me.business.currency) ? html`<button type="button" class="btn btn-whatsapp"
+            data-wa="${whatsappNumber(c.phone, app.me.business.currency)}" ${c.is_demo ? 'data-wa-demo' : ''}>${icon('message')}WhatsApp</button>` : ''}
           <a class="btn btn-primary" href="/bills/new?customer_id=${c.id}">${icon('filePlus')}New bill</a>
           <button type="button" class="btn" data-action="edit">${icon('edit')}Edit</button>
           <button type="button" class="btn btn-danger" data-action="delete">${icon('trash')}Delete</button>
@@ -57,6 +60,7 @@ export default async function customerDetail(el, { app, params }) {
       </section>`);
   }
 
+  on(el, 'click', '[data-wa]', (e, b) => onWhatsAppButton(b));
   on(el, 'click', '[data-action=edit]', async () => {
     const updated = await openCustomerForm({ customer: data.customer });
     if (updated) {

@@ -56,6 +56,7 @@ export default async function reports(el, { app, query }) {
             <a data-export="payments" href="#">${icon('wallet')}Payments received</a>
             <a data-export="daybook" href="#">${icon('rupee')}Day book (sales, money in, expenses)</a>
             <a data-export="inventory" href="#">${icon('box')}Current inventory</a>
+            <a data-export="customers" href="#">${icon('users')}Customers (all details)</a>
           </div>
         </details>
       </div>
@@ -235,7 +236,7 @@ export default async function reports(el, { app, query }) {
     a.closest('details')?.removeAttribute('open');
     const type = a.dataset.export;
     const link = document.createElement('a');
-    link.href = `/api/reports/export${buildQuery({ type, ...(type === 'inventory' ? {} : range) })}`;
+    link.href = `/api/reports/export${buildQuery({ type, ...(type === 'inventory' || type === 'customers' ? {} : range) })}`;
     link.download = '';
     document.body.append(link);
     link.click();

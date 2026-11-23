@@ -461,12 +461,15 @@ const MIGRATIONS = [
   `,
 ];
 
+/** The schema version the app runs (PRAGMA user_version after every migration). */
+export const SCHEMA_VERSION = MIGRATIONS.length;
+
 export function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   db = new DatabaseSync(file);
   statements.clear();
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-  migrate();
+  migrate(db);
   return db;
 }
 
@@ -476,16 +479,17 @@ export function closeDb() {
   statements.clear();
 }
 
-function migrate() {
-  const version = db.prepare('PRAGMA user_version').get().user_version;
+/** Bring any database (the app's, or a backup file opened on its own) up to the current schema. */
+export function migrate(conn) {
+  const version = conn.prepare('PRAGMA user_version').get().user_version;
   for (let v = version; v < MIGRATIONS.length; v++) {
-    db.exec('BEGIN');
+    conn.exec('BEGIN');
     try {
-      db.exec(MIGRATIONS[v]);
-      db.exec(`PRAGMA user_version = ${v + 1}`);
-      db.exec('COMMIT');
+      conn.exec(MIGRATIONS[v]);
+      conn.exec(`PRAGMA user_version = ${v + 1}`);
+      conn.exec('COMMIT');
     } catch (err) {
-      db.exec('ROLLBACK');
+      conn.exec('ROLLBACK');
       throw err;
     }
   }
@@ -518,6 +522,11 @@ export function all(sql, ...params) {
 
 export function run(sql, ...params) {
   return prepare(sql).run(...bind(params));
+}
+
+/** Rows one at a time, for reads too large to hold at once (a backup's photos). Not cached: each call has its own. */
+export function iterate(sql, ...params) {
+  return db.prepare(sql).iterate(...bind(params));
 }
 
 /** Run fn inside a write transaction. Nested calls join the outer transaction. fn must be synchronous. */
