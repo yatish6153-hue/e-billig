@@ -459,6 +459,14 @@ const MIGRATIONS = [
   `
   ALTER TABLE businesses ADD COLUMN review_url TEXT NOT NULL DEFAULT '';
   `,
+  // v20 — backups by email (Settings → Backup & restore): where to send them, whether every day, when the last one
+  // went and why the last try failed ('' when it didn't).
+  `
+  ALTER TABLE businesses ADD COLUMN backup_email TEXT NOT NULL DEFAULT '';
+  ALTER TABLE businesses ADD COLUMN backup_daily INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE businesses ADD COLUMN backup_emailed_at TEXT;
+  ALTER TABLE businesses ADD COLUMN backup_email_error TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 /** The schema version the app runs (PRAGMA user_version after every migration). */

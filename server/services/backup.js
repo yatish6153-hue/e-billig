@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { DatabaseSync } from 'node:sqlite';
@@ -48,6 +49,7 @@ export const NOT_IN_BACKUP = ['businesses', 'users', 'sessions'];
 
 const META = 'ebilling_backup';
 const SQLITE_HEADER = Buffer.from('SQLite format 3\0', 'latin1');
+const GZIP_HEADER = Buffer.from([0x1f, 0x8b]);
 export const MAX_UPLOAD_BYTES = 1024 ** 3; // 1 GB: photos make up most of a backup
 const STAGED_MINUTES = 30;
 
@@ -109,14 +111,7 @@ function slug(name) {
  * the app is brought up to date (in the uploaded copy only). The caller closes the connection.
  */
 function openBackup(file) {
-  const head = Buffer.alloc(SQLITE_HEADER.length);
-  const fd = fs.openSync(file, 'r');
-  try {
-    fs.readSync(fd, head, 0, head.length, 0);
-  } finally {
-    fs.closeSync(fd);
-  }
-  if (!head.equals(SQLITE_HEADER)) throw notBackup();
+  if (!fileHead(file, SQLITE_HEADER.length).equals(SQLITE_HEADER)) throw notBackup();
 
   const conn = openFile(file);
   try {
@@ -185,18 +180,23 @@ function dropExpired() {
  */
 export async function stageBackup(businessId, req) {
   dropExpired();
-  const tooLarge = () => new v.HttpError(413, 'That file is too large to be a backup (1 GB at most).');
   if (Number(req.headers['content-length'] || 0) > MAX_UPLOAD_BYTES) throw tooLarge();
-  const file = tempFile();
-  let bytes = 0;
+  let file = tempFile();
+  const files = [file];
   try {
-    await pipeline(req, new Transform({
-      transform(chunk, _enc, done) {
-        bytes += chunk.length;
-        done(bytes > MAX_UPLOAD_BYTES ? tooLarge() : null, chunk);
-      },
-    }), fs.createWriteStream(file));
-    if (!bytes) throw v.badRequest('Choose a backup file.', 'file');
+    if (!await saveLimited([req], file)) throw v.badRequest('Choose a backup file.', 'file');
+    // An emailed backup comes gzipped (.db.gz): it's taken as it is.
+    if (fileHead(file, 2).equals(GZIP_HEADER)) {
+      const plain = tempFile();
+      files.push(plain);
+      try {
+        await saveLimited([fs.createReadStream(file), zlib.createGunzip()], plain);
+      } catch (err) {
+        throw err instanceof v.HttpError ? err : damaged();
+      }
+      fs.rmSync(file, { force: true });
+      file = plain;
+    }
     const backup = openBackup(file);
     let summary;
     try {
@@ -209,9 +209,35 @@ export async function stageBackup(businessId, req) {
     staged.set(businessId, { token, file, expires: Date.now() + STAGED_MINUTES * 60_000 });
     return { upload: token, backup: summary };
   } catch (err) {
-    fs.rmSync(file, { force: true });
+    for (const f of files) fs.rmSync(f, { force: true });
     throw err;
   }
+}
+
+const tooLarge = () => new v.HttpError(413, 'That file is too large to be a backup (1 GB at most).');
+
+/** Stream into a file, refusing more than MAX_UPLOAD_BYTES (also what a gzipped file unpacks to). Returns the size. */
+async function saveLimited(sources, file) {
+  let bytes = 0;
+  await pipeline(...sources, new Transform({
+    transform(chunk, _enc, done) {
+      bytes += chunk.length;
+      done(bytes > MAX_UPLOAD_BYTES ? tooLarge() : null, chunk);
+    },
+  }), fs.createWriteStream(file));
+  return bytes;
+}
+
+/** The first bytes of a file. */
+function fileHead(file, length) {
+  const head = Buffer.alloc(length);
+  const fd = fs.openSync(file, 'r');
+  try {
+    fs.readSync(fd, head, 0, length, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return head;
 }
 
 /** Replace all of the business's data with the staged backup. Returns how many rows came back, per table. */
@@ -355,7 +381,10 @@ function restoreSettings(businessId, b) {
   const when = nowIso();
 
   const d = {};
-  for (const col of columnsOf('businesses')) if (col !== 'id' && col !== 'created_at') d[col] = b[col];
+  // Where backups are emailed stays as it is now (backup_*): an old backup shouldn't change that.
+  for (const col of columnsOf('businesses')) {
+    if (col !== 'id' && col !== 'created_at' && !col.startsWith('backup_')) d[col] = b[col];
+  }
   Object.assign(d, {
     name: String(b.name ?? '').trim().slice(0, 120) || now.name,
     website: checked(website, b.website, ''),

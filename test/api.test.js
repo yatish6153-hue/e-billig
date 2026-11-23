@@ -10,6 +10,8 @@ import { openDb, closeDb, get as dbGet, all as dbAll, run as dbRun } from '../se
 import { createApp } from '../server/app.js';
 import { ensureDemoAccount, DEMO_ACCOUNT } from '../server/seed.js';
 import { BACKUP_TABLES, NOT_IN_BACKUP } from '../server/services/backup.js';
+import { backupEmailDue } from '../server/services/backup-email.js';
+import { setMailTransport } from '../server/services/mail.js';
 
 let server;
 let base;
@@ -1658,6 +1660,74 @@ test('customers export: every customer with their details and bill totals, for E
   assert.deepEqual({ ...asha, B: '' }, { A: 'Asha Verma', B: '', E: 1, F: 1000, G: 400, H: 600, I: today, J: 1 }, 'money as numbers');
   assert.match(sheet, /<c r="F3" s="2"><v>1000<\/v><\/c>/, 'shown with 2 decimals');
   assert.deepEqual([rows[2].A, rows[2].C, rows[2].D, rows[2].E, rows[2].H], ['Zoya Khan', 'zoya@example.com', 'B L Jangid Market, Paota, Jaipur', 0, 0]);
+});
+
+test('backup by email: where to, sent now with the file attached, which restores as it is; failures shown', async () => {
+  const c = await newBusiness();
+  await newProduct(c);
+  // Until the server has an email account, it says so.
+  let s = (await c.get('/api/backup/email')).data;
+  assert.deepEqual([s.email, s.daily, s.ready, s.emailed_at, s.error, s.send_hour], ['', false, false, null, '', 21]);
+  assert.equal((await c.put('/api/backup/email', { email: '', daily: true })).data.error.field, 'email', 'every day needs an address');
+  assert.equal((await c.put('/api/backup/email', { email: 'not-an-email' })).status, 400);
+  s = (await c.put('/api/backup/email', { email: 'Owner.Backups@Gmail.com', daily: true })).data;
+  assert.deepEqual([s.email, s.daily], ['owner.backups@gmail.com', true]);
+  let r = await c.post('/api/backup/email/send', {});
+  assert.equal(r.status, 503);
+  assert.equal(r.data.error.code, 'MAIL_NOT_SET_UP');
+
+  const sent = [];
+  setMailTransport({ async sendMail(m) { sent.push({ ...m, files: m.attachments.map((a) => fs.readFileSync(a.path)) }); return {}; } });
+  try {
+    r = await c.post('/api/backup/email/send', {});
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.deepEqual([r.data.sent.to, r.data.sent.attached, r.data.error, r.data.ready], ['owner.backups@gmail.com', true, '', true]);
+    assert.ok(Date.parse(r.data.emailed_at));
+    const [mail] = sent;
+    assert.deepEqual([mail.to, mail.from], ['owner.backups@gmail.com', 'backups@test.example']);
+    assert.match(mail.subject, /^eBilling backup · Test Shop \d+ · \d{4}-\d{2}-\d{2}$/);
+    assert.match(mail.text, /0 bills, 0 customers, 0 bookings, 0 day book entries and 0 photos\./);
+    assert.match(mail.text, /Restore from a backup, and choose the attached file as it is/);
+    assert.match(mail.attachments[0].filename, /^ebilling-backup-test-shop-\d+-\d{4}-\d{2}-\d{2}\.db\.gz$/);
+    const gz = mail.files[0];
+    assert.equal(zlib.gunzipSync(gz).subarray(0, 15).toString(), 'SQLite format 3', 'the backup, gzipped');
+    assert.equal((await c.post('/api/backup/email/send', {})).status, 429, 'one a minute');
+
+    // The emailed file restores as it is, and a restore leaves where backups go as it is now.
+    const checked = await c.send('/api/backup/check', gz);
+    assert.equal(checked.status, 200, JSON.stringify(checked.data));
+    assert.equal(checked.data.backup.counts.products, 1);
+    await c.put('/api/backup/email', { email: 'new.place@gmail.com', daily: false });
+    assert.equal((await c.post('/api/backup/restore', { upload: checked.data.upload })).status, 200);
+    s = (await c.get('/api/backup/email')).data;
+    assert.deepEqual([s.email, s.daily], ['new.place@gmail.com', false]);
+    assert.equal((await c.send('/api/backup/check', zlib.gzipSync(Buffer.from('hello')))).status, 400, 'gzipped, but not a backup');
+    assert.equal((await c.send('/api/backup/check', Buffer.from([0x1f, 0x8b, 1, 2, 3]))).status, 400, 'a broken gzip');
+
+    // A failure is said in plain words and kept to show in Settings.
+    const d = await newBusiness();
+    await d.put('/api/backup/email', { email: 'someone@gmail.com' });
+    setMailTransport({ async sendMail() { throw Object.assign(new Error('Invalid login: 535-5.7.8'), { code: 'EAUTH' }); } });
+    r = await d.post('/api/backup/email/send', {});
+    assert.equal(r.status, 502);
+    assert.match(r.data.error.message, /login was refused.*App password/);
+    assert.match((await d.get('/api/backup/email')).data.error, /login was refused/);
+  } finally {
+    setMailTransport(null);
+  }
+});
+
+test('backup by email: once a day from 9 pm; the first one and a missed day go at once', () => {
+  const at = (local) => new Date(local); // no Z: the server's own clock
+  const on = { daily: true, email: 'owner@gmail.com' };
+  assert.equal(backupEmailDue({ ...on, daily: false }, at('2026-11-24T22:00')), false);
+  assert.equal(backupEmailDue({ ...on, email: '' }, at('2026-11-24T22:00')), false);
+  assert.equal(backupEmailDue({ ...on, emailedAt: null }, at('2026-11-24T10:00')), true, 'the first one at once');
+  const lastNight = at('2026-11-23T21:05').toISOString();
+  assert.equal(backupEmailDue({ ...on, emailedAt: lastNight }, at('2026-11-24T10:00')), false, 'today’s waits for 9 pm');
+  assert.equal(backupEmailDue({ ...on, emailedAt: lastNight }, at('2026-11-24T21:00')), true);
+  assert.equal(backupEmailDue({ ...on, emailedAt: at('2026-11-24T21:01').toISOString() }, at('2026-11-24T23:30')), false, 'once a day');
+  assert.equal(backupEmailDue({ ...on, emailedAt: at('2026-11-22T21:00').toISOString() }, at('2026-11-24T08:00')), true, 'a missed day goes at once');
 });
 
 test('account: the owner changes the email they sign in with, checked with their password', async () => {

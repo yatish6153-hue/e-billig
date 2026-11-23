@@ -143,6 +143,8 @@ export default async function settings(el, { app }) {
           </div>
           <input type="file" class="hidden" data-backup-input>
           <p class="field-hint" style="margin:10px 0 0">Logins and passwords aren’t in the backup, and restoring one doesn’t change them.</p>
+          <hr class="divider" style="margin:20px 0">
+          <div data-backup-email>${loading()}</div>
         </div>
       </section>
 
@@ -196,6 +198,7 @@ export default async function settings(el, { app }) {
     bind();
     loadTeamLogins();
     loadLists();
+    loadBackupEmail();
     if (['#demo', '#lists', '#backup'].includes(location.hash)) {
       setTimeout(() => el.querySelector(location.hash)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     }
@@ -488,6 +491,83 @@ export default async function settings(el, { app }) {
           }
         });
       },
+    });
+  }
+
+  // ---- Backups by email: where to, every day or not, and "Send backup now" ----
+  let backupMail = null;
+  async function loadBackupEmail() {
+    const box = el.querySelector('[data-backup-email]');
+    try {
+      backupMail = await api('/backup/email');
+      renderBackupEmail();
+    } catch (err) {
+      if (box) setHtml(box, html`<p class="small text-bad">${err.message}</p>`);
+    }
+  }
+
+  function renderBackupEmail() {
+    const box = el.querySelector('[data-backup-email]');
+    if (!box || !backupMail) return;
+    const s = backupMail;
+    const hour = `${s.send_hour % 12 || 12} ${s.send_hour < 12 ? 'am' : 'pm'}`;
+    setHtml(box, html`
+      <form data-backup-email-form novalidate>
+        <div class="label" style="margin-bottom:4px">${icon('mail', 'sm')} Email backups</div>
+        <p class="muted small" style="margin:0 0 12px">The backup file is emailed to this address. Keep those emails: any of them can be restored here.</p>
+        ${s.ready ? '' : html`<div class="alert alert-warn" style="margin-bottom:12px">${icon('alert')}<div>Email isn’t set up on the server yet.
+          Add the Gmail address and its App password to the <strong>.env</strong> file (see README → Email backups), then restart eBilling.</div></div>`}
+        <div class="form-grid">
+          <div class="field"><label for="backup_email">Send backups to</label>
+            <input class="input" id="backup_email" name="email" type="email" value="${s.email}" maxlength="254" placeholder="e.g. yourname@gmail.com" autocomplete="email"></div>
+        </div>
+        <label class="check" style="margin-top:12px"><input type="checkbox" name="daily" ${s.daily ? 'checked' : ''}>
+          <span>Email a backup every day<div class="check-desc">Around ${hour}. If eBilling isn’t running then, it goes the next time it starts.</div></span></label>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button type="submit" class="btn">${icon('check')}Save</button>
+          <button type="button" class="btn" data-action="send-backup" ${s.ready ? '' : 'disabled'}>${icon('mail')}Send backup now</button>
+        </div>
+        ${s.error ? html`<p class="small text-bad" style="margin:12px 0 0">${s.error}</p>` : ''}
+        ${s.emailed_at ? html`<p class="small muted" style="margin:${s.error ? 4 : 12}px 0 0">Last backup emailed ${formatDateTime(s.emailed_at)}${s.from ? ` from ${s.from}` : ''}.</p>`
+          : s.ready && s.from ? html`<p class="small muted" style="margin:12px 0 0">Backups are sent from ${s.from}.</p>` : ''}
+      </form>`);
+
+    const form = box.querySelector('[data-backup-email-form]');
+    const save = async () => {
+      backupMail = await api('/backup/email', { method: 'PUT', body: formData(form) });
+    };
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearErrors(form);
+      await busy(e.submitter || form.querySelector('[type=submit]'), async () => {
+        try {
+          await save();
+          renderBackupEmail();
+          toast(backupMail.daily ? `Saved. A backup will be emailed to ${backupMail.email} every day.` : 'Saved.');
+        } catch (err) {
+          showFormError(form, err);
+        }
+      });
+    });
+    form.querySelector('[data-action=send-backup]').addEventListener('click', async (e) => {
+      clearErrors(form);
+      if (!form.elements.namedItem('email').value.trim()) {
+        showFieldError(form, 'email', 'Enter the email address to send the backup to.');
+        return;
+      }
+      await busy(e.currentTarget, async () => {
+        try {
+          await save();
+          const res = await api('/backup/email/send', { method: 'POST', body: {} });
+          backupMail = res;
+          toast(res.sent.attached ? `Backup emailed to ${res.sent.to}.`
+            : `Sent a note to ${res.sent.to}: this backup is too large to attach, so download it here.`, res.sent.attached ? 'success' : 'info');
+        } catch (err) {
+          toastError(err);
+          backupMail = await api('/backup/email').catch(() => backupMail);
+        }
+        renderBackupEmail();
+      });
     });
   }
 

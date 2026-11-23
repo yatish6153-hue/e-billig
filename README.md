@@ -127,6 +127,8 @@ npm test
 - A camera and "Thank you for choosing …", then a film-strip footer that carries your **phone, email and website** (each in its own frame, with an icon) and your **address**. On the customer's link and in the PDF they are links: tap to call, email or open the website. They come from **Settings → Business details** (Phone, Email, Website, Address); anything left empty is left out. A PDF that runs to more pages shows the strip on every page.
 - In **Settings → Bill design**, change the tagline, choose a colour (studio orange by default) and pick a dark or light header, with a live preview. The same design is used on screen, in PDFs and on the customer's link.
 
+**Sign-in page in the studio's look.** The sign-in and create-account pages follow deveshstudio.com: the studio logo on warm black with an orange glow, a bold headline (Bricolage Grotesque, the website's font, served by the app itself) ending in an orange full stop, numbered points, and an orange **Sign in** button. On a phone the dark part is a short band above the form.
+
 **Download & share.**
 - An A4 bill (PDF or print) in the studio design.
 - Buttons for Download PDF, Print, Copy link and WhatsApp. WhatsApp opens a prefilled message (total, advance, balance and the bill link) addressed to the customer's WhatsApp number.
@@ -151,6 +153,16 @@ npm test
 - **Restore from a backup** puts everything back as it was in that file, for example after a bill was deleted by mistake. It first shows the file's date and what it holds, and asks before replacing anything. Whatever was added or changed after the backup is replaced; logins stay as they are, and bill numbers given out since are not given out again.
 - A backup can also be restored into a new account (if the server or its database is lost): sign up again, then restore.
 - Any bill can be deleted from its page (⋯ → Delete bill): its stock goes back, and its payments leave the day book. Cancel instead to keep a record of it.
+
+**Email backups** (Settings → Backup & restore → Email backups).
+- Type the address to send backups to and tick **Email a backup every day**: the backup file goes there every day around 9 pm (if eBilling isn't running then, it goes the next time it starts). **Send backup now** sends one straight away.
+- The file comes zipped (`….db.gz`) so it fits in an email; restore it as it is, no need to unzip. A backup too large to attach (over about 18 MB, from many photos) comes as a note instead: download that one in Settings.
+- The server needs an email account to send from, set once in a `.env` file next to `package.json` (copy `.env.example`). With **Gmail**:
+  1. In your Google Account → Security, turn on **2-Step Verification**.
+  2. Google Account → Security → **App passwords**: make one called "eBilling" and copy its 16 letters.
+  3. In `.env`: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=` your Gmail address, `SMTP_PASS=` the 16 letters (not your normal password), and optionally `MAIL_FROM="Devesh Studio eBilling <yourname@gmail.com>"`.
+  4. Restart eBilling. Its start-up lines say "Backup emails: on", and Settings shows where emails come from.
+  A Hostinger mailbox works the same way with `SMTP_HOST=smtp.hostinger.com`. Online, set `TZ=Asia/Kolkata` too, so "9 pm" is India time.
 
 ## Going live (e.g. billing.deveshstudio.com)
 

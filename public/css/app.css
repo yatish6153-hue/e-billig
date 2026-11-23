@@ -1378,27 +1378,135 @@ a.stage-chip:hover { text-decoration: none; }
 .payment-row:last-child { border-bottom: 0; }
 
 /* ---- Auth --------------------------------------------------------------- */
-.auth { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; }
-.auth-side {
-  background: linear-gradient(160deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%); color: #fff;
-  padding: 48px; display: flex; flex-direction: column; justify-content: space-between;
+/* Sign in / create account, in the look of the studio's website (deveshstudio.com) and its bills: the logo and a
+   pitch on warm black with an ember glow from the top right and faint lens rings, a "● eBilling" label, a Bricolage
+   Grotesque headline in viewfinder corners ending in an orange full stop, numbered points; the form on warm white
+   with an orange pill button. Everything is scoped to .auth, so the rest of the app keeps its blue. */
+.auth {
+  --ink: #0d0a08; --cream: #fff5ea; --amber: #ffb23e;
+  --ember: #ff7a1a; --ember-hover: #f26b0e; --on-ember: #1a0900; --ember-text: #c2410c;
+  --paper: #fbf7f2; --paper-line: #d8c8b8; --brown: #3b2f27; --brown-muted: #6b5d52;
+  --display: 'Bricolage Grotesque Variable', var(--font);
+  min-height: 100vh; min-height: 100dvh;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  background: var(--paper);
 }
-.auth-side h1 { font-size: 30px; line-height: 1.2; margin: 24px 0 12px; max-width: 420px; }
-.auth-side p { color: #dbeafe; max-width: 420px; font-size: 15px; }
-.auth-side ul { padding: 0; list-style: none; margin: 24px 0 0; display: grid; gap: 12px; color: #eff6ff; }
-.auth-side li { display: flex; gap: 10px; align-items: center; }
-.auth-side .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
-.auth-side .logo .brand-mark { background: #fff; color: var(--primary); }
-/* The studio's icon (public/icons), as in the browser tab. */
-.brand-icon { width: 40px; height: 40px; border-radius: 9px; flex-shrink: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
-.auth-main { display: grid; place-items: center; padding: 32px 20px; }
-.auth-card { width: min(420px, 100%); }
-.auth-card h2 { font-size: 22px; margin-bottom: 4px; }
-.auth-card .sub { color: var(--muted); margin-bottom: 20px; }
-.auth-card form { display: grid; gap: 14px; }
-.auth-switch { text-align: center; margin-top: 18px; color: var(--muted); }
-.demo-box { margin-top: 18px; padding: 12px 14px; border: 1px dashed #c4b5fd; background: var(--demo-bg); border-radius: 10px; font-size: 13px; color: #4c1d95; }
-.demo-box .btn { margin-top: 8px; }
+.auth-side {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
+  padding: 44px clamp(32px, 5vw, 72px);
+  color: var(--cream);
+  background:
+    radial-gradient(85% 60% at 100% 0%, rgb(255 122 26 / 0.34), transparent 70%),
+    radial-gradient(70% 45% at 0% 100%, rgb(150 38 16 / 0.3), transparent 70%),
+    var(--ink);
+}
+/* Faint lens rings behind the glow, as on bills. */
+.auth-side::after {
+  content: ''; position: absolute; z-index: -1; right: -130px; top: -150px; width: 480px; height: 480px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 22px, rgb(255 122 26 / 0.22) 22px 23.5px);
+  opacity: 0.6; pointer-events: none;
+}
+.auth-logo { display: block; width: 150px; height: auto; }
+.auth-pitch { max-width: 520px; }
+/* The headline in a camera's viewfinder: four orange corner marks, as round the customer on bills. */
+.auth-frame {
+  --vf: rgb(255 122 26 / 0.85);
+  width: fit-content; max-width: calc(100% + 24px); margin-left: -24px; padding: 20px 24px 22px;
+  background:
+    linear-gradient(var(--vf), var(--vf)) left top / 18px 2px, linear-gradient(var(--vf), var(--vf)) left top / 2px 18px,
+    linear-gradient(var(--vf), var(--vf)) right top / 18px 2px, linear-gradient(var(--vf), var(--vf)) right top / 2px 18px,
+    linear-gradient(var(--vf), var(--vf)) left bottom / 18px 2px, linear-gradient(var(--vf), var(--vf)) left bottom / 2px 18px,
+    linear-gradient(var(--vf), var(--vf)) right bottom / 18px 2px, linear-gradient(var(--vf), var(--vf)) right bottom / 2px 18px;
+  background-repeat: no-repeat;
+}
+/* "● LABEL", as on bills and the website. */
+.auth-label {
+  display: block; margin-bottom: 12px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--amber);
+}
+.auth-label::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 9px; border-radius: 50%;
+  background: var(--ember); vertical-align: 0.1em;
+}
+/* 9em keeps the lines short, so the viewfinder (fit-content) sits close round them. */
+.auth-side h1 {
+  margin: 0; max-width: 9em;
+  font-family: var(--display); font-size: clamp(32px, 3.4vw, 48px); font-weight: 700; line-height: 1.06;
+  letter-spacing: -0.03em; color: var(--cream); text-wrap: balance;
+}
+.auth-dot { color: var(--ember); }
+.auth-lede { margin: 18px 0 0; max-width: 440px; font-size: 16px; line-height: 1.55; color: rgb(255 245 234 / 0.72); }
+/* Numbered like the website's services and the items on a bill. */
+.auth-points { list-style: none; margin: 30px 0 0; padding: 0; max-width: 440px; }
+.auth-points li {
+  display: flex; align-items: baseline; gap: 16px; padding: 12px 0;
+  border-top: 1px solid rgb(255 245 234 / 0.12); font-size: 15px; color: var(--cream);
+}
+.auth-points li:last-child { border-bottom: 1px solid rgb(255 245 234 / 0.12); }
+.auth-points b {
+  min-width: 22px; font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums; color: var(--ember);
+}
+.auth-foot { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; font-size: 13px; color: rgb(255 245 234 / 0.55); }
+.auth-foot a { font-weight: 600; color: var(--amber); }
+.auth-side a:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+
+/* The form, on warm white. */
+.auth-main { display: grid; place-items: center; padding: 40px 24px; background: var(--paper); }
+.auth-card { width: min(400px, 100%); }
+.auth-card h2 {
+  margin-bottom: 6px; font-family: var(--display); font-size: 32px; font-weight: 700; line-height: 1.1;
+  letter-spacing: -0.03em; color: var(--on-ember);
+}
+.auth-card .sub { margin-bottom: 24px; font-size: 14.5px; color: var(--brown-muted); }
+.auth-card form { display: grid; gap: 16px; }
+.auth .field > label { color: var(--brown); }
+.auth .field-hint, .auth .check .check-desc { color: var(--brown-muted); }
+/* 16px, so phones don't zoom in on the field. */
+.auth .input { height: 46px; border-color: var(--paper-line); border-radius: 10px; background: #fff; font-size: 16px; }
+.auth .input:hover { border-color: #c4b09c; }
+.auth .input:focus { border-color: var(--ember); box-shadow: 0 0 0 3px rgb(255 122 26 / 0.22); }
+/* A field with an error stays red, as everywhere else in the app. */
+.auth .input.is-invalid, .auth .is-invalid .input { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.14); }
+.auth .check input { accent-color: var(--ember); }
+.auth .btn-primary {
+  height: 48px; margin-top: 4px; border-radius: 999px; border-color: var(--ember); background: var(--ember); color: var(--on-ember);
+  font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+}
+.auth .btn-primary:hover { border-color: var(--ember-hover); background: var(--ember-hover); }
+.auth .btn:focus-visible { outline: 2px solid var(--on-ember); outline-offset: 2px; }
+.auth .btn-primary .spinner { border-color: rgb(26 9 0 / 0.25); border-top-color: var(--on-ember); }
+.auth-card a { font-weight: 600; color: var(--ember-text); }
+.auth-switch { margin-top: 20px; text-align: center; color: var(--brown-muted); }
+.demo-box { margin-top: 20px; padding: 14px 16px; border: 1px dashed #c4b5fd; background: var(--demo-bg); border-radius: 12px; font-size: 13px; color: #4c1d95; }
+.demo-box .btn { margin-top: 10px; border-radius: 999px; }
+
+/* Laptop screens (1366×768 shows about 650px): tighter spacing, so the dark side fits without scrolling. */
+@media (min-width: 861px) and (max-height: 820px) {
+  .auth-side { gap: 24px; padding-top: 30px; padding-bottom: 28px; }
+  .auth-logo { width: 124px; }
+  .auth-frame { padding-top: 16px; padding-bottom: 18px; }
+  .auth-label { margin-bottom: 10px; }
+  .auth-side h1 { font-size: clamp(30px, min(3.4vw, 6.2vh), 48px); }
+  .auth-lede { margin-top: 14px; font-size: 15px; }
+  .auth-points { margin-top: 20px; }
+  .auth-points li { padding: 9px 0; font-size: 14.5px; }
+}
+
+/* Phones and narrow windows: the dark side becomes a short band above the form (logo, label, headline). */
+@media (max-width: 860px) {
+  .auth { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .auth-side { justify-content: flex-start; gap: 14px; padding: 18px 20px 22px; }
+  .auth-side::after { right: -120px; top: -130px; width: 300px; height: 300px; }
+  .auth-logo { width: 92px; }
+  .auth-frame { width: auto; max-width: none; margin: 0 -12px; padding: 10px 12px 12px; }
+  .auth-label { margin-bottom: 6px; font-size: 12px; }
+  .auth-side h1 { max-width: 13em; font-size: clamp(24px, 6.6vw, 30px); }
+  .auth-lede, .auth-points, .auth-foot { display: none; }
+  .auth-main { place-items: start center; padding: 28px 20px 40px; }
+  .auth-card h2 { font-size: 26px; }
+}
 
 /* ---- Settings: bill design ----------------------------------------------- */
 .design-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
@@ -1488,8 +1596,6 @@ a.stage-chip:hover { text-decoration: none; }
   .quick-action { flex-direction: column; text-align: center; gap: 6px; padding: 12px 6px; }
   .quick-action .qa-sub { display: none; }
   .quick-action .qa-title { font-size: 13px; }
-  .auth { grid-template-columns: 1fr; }
-  .auth-side { display: none; }
   .mobile-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     position: fixed; left: 0; right: 0; bottom: calc(62px + env(safe-area-inset-bottom)); z-index: 25;

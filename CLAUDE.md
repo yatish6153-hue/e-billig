@@ -8,13 +8,13 @@ eBilling: billing, job tracking and a day book for Devesh Digital Studio (a phot
 
 ## Commands
 
-- `npm install`: dependencies (express, pdfkit, qrcode-generator, @fontsource-variable/inter).
+- `npm install`: dependencies (express, pdfkit, qrcode-generator, @fontsource-variable/inter, @fontsource-variable/bricolage-grotesque).
 - `npm start`: serves http://localhost:3000 from `server/index.js`, using `data/ebilling.db`.
 - `npm run dev`: the same with `node --watch`. Without it, restart the server after server changes; `public/` and `shared/` changes only need a browser reload.
 - `npm test`: runs `node --test test/*.test.js`. On Node 24, `node --test test/` does not work; pass the glob.
 - One test: `node --test --test-name-pattern="day book" test/api.test.js`.
 
-Requires Node ≥ 22.13. Environment: `PORT`, `DB_PATH` (default `data/ebilling.db`), `PUBLIC_URL` (base of share links sent on WhatsApp), `TRUST_PROXY`, `COOKIE_SECURE`, `NODE_ENV=production` (turns the demo login off), `DEMO_ACCOUNT=true|false`. When enabled, a shared demo login from `server/seed.js` is created on first start.
+Requires Node ≥ 22.13. Environment: `PORT`, `DB_PATH` (default `data/ebilling.db`), `PUBLIC_URL` (base of share links sent on WhatsApp), `TRUST_PROXY`, `COOKIE_SECURE`, `NODE_ENV=production` (turns the demo login off), `DEMO_ACCOUNT=true|false`, `SMTP_*` / `MAIL_FROM` (the account backups are emailed from), `TZ`. Any of these can go in a git-ignored `.env` file (`server/env.js` loads it; `.env.example` lists them). When enabled, a shared demo login from `server/seed.js` is created on first start.
 
 ## The local database is real business data
 
@@ -132,6 +132,8 @@ The page also has a month calendar (`public/js/components/mini-calendar.js`, als
 
 **Colours by part of the app.** Tokens `--c-bills`, `--c-book`, `--c-daybook`, `--c-track`, `--c-stock`, `--c-cust` and `--c-report` in `app.css`. An `area-…` class sets `--area` / `--area-bg`, which the menu, dashboard widgets and quick actions use. Bookings are violet and the day book green everywhere, including the calendar marks.
 
+**Sign-in page** (`views/auth.js`, the "Auth" block in `app.css`). It follows the studio website and the bills: on warm black (`#0d0a08`) with an ember glow and lens rings, the logo for dark backgrounds (`public/brand/devesh-studio-logo-dark.png`, the logo with its tile made transparent), a "● eBilling" label, a headline in Bricolage Grotesque inside viewfinder corners ending in an orange full stop, and numbered points; the form on warm white with an orange pill button (`#ff7a1a`, text `#1a0900`). Bricolage is self-hosted like Inter: `@fontsource-variable/bricolage-grotesque`, served at `/vendor/bricolage` (`server/app.js`) and linked in `index.html`. Everything is scoped to `.auth`, so the app keeps its blue; at 860px and narrower the dark side is a short band above the form. While it shows it sets `<meta name="theme-color">` to the warm black, and its cleanup puts the app colour back.
+
 **Client** (`public/js`):
 - `main.js` registers routes (`route('/path', () => import('./views/x.js'))`) and the nav.
 - Each view exports `default async function (el, { app, params, query })`, renders into `el`, and may return a cleanup function.
@@ -146,6 +148,11 @@ The page also has a month calendar (`public/js/components/mini-calendar.js`, als
 - `public/css/invoice.css` styles the bill and the public pages.
 
 **Exports** (`GET /api/reports/export?type=`). bills, items, payments, daybook and inventory are CSV (`v.toCsv`: a UTF-8 BOM, and text starting with = + - @ gets a leading `'`, which Excel shows). `customers` is a real Excel file from `server/services/xlsx.js` (no dependency: deflated zip of inline-string sheet XML, a bold frozen header, money cells as numbers with 2 decimals), so numbers like +91 98290 12345 show as typed; pass `columns` in the export to make another type an .xlsx. Its totals reuse the Customers page's `AGGREGATES` (`routes/customers.js`).
+
+**Email backups** (`server/services/backup-email.js`, `server/services/mail.js`; v20 `businesses.backup_email`, `backup_daily`, `backup_emailed_at`, `backup_email_error`; `GET/PUT /api/backup/email`, `POST /api/backup/email/send`).
+- `mail.js` sends with nodemailer through the SMTP account in `.env` (`SMTP_HOST`, `SMTP_PORT` (465), `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`; see `.env.example`). `server/env.js`, imported first by `index.js`, loads `.env` (values already in the environment win). `mailError` turns nodemailer errors into plain words; tests swap the transport with `setMailTransport`.
+- `emailBackup` gzips `createBackup`'s file and attaches it (up to `MAX_ATTACHMENT_BYTES`, else the email says to download it), then records the time or the error. `startBackupEmails` (index.js only, never in tests) checks every 15 minutes; `backupEmailDue` is once a day from `SEND_HOUR` (21, the server's clock, `TZ`), with the first one and a missed day sent at once, retrying an hour after a failure. "Send backup now" allows one a minute.
+- `stageBackup` takes a gzipped upload too (the emailed file), unpacking it with the same 1 GB limit. A restore keeps the business's `backup_*` columns as they are.
 
 **Backup & restore** (`server/services/backup.js`, routes `server/routes/backup.js` at `/api/backup`, owner only; Settings → Backup & restore).
 - A backup is an SQLite file made with the app's own schema (`migrate(conn)` in `db.js`), holding the business's row and every row of `BACKUP_TABLES`, plus an `ebilling_backup` key/value table (app, format, created_at, business_name). No `users` or `sessions`. A new table with business data must go in `BACKUP_TABLES` (parents first; `via` for a table without `business_id`); a test fails until it's listed there or in `NOT_IN_BACKUP`.

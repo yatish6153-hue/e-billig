@@ -1,11 +1,17 @@
-// Sign in / create account.
+// Sign in / create account, in the look of the studio's website (deveshstudio.com): the studio's logo and a short
+// pitch on warm black, the form on warm white (styles: "Auth" in app.css).
 import { api } from '../lib/api.js';
 import { html, setHtml, formData } from '../lib/dom.js';
 import { icon } from '../lib/icons.js';
 import { busy, showFormError, clearErrors } from '../lib/ui.js';
 
+// While this page shows, the phone's browser bar takes the warm black of the band at the top; the app's colour after.
+const themeColor = document.querySelector('meta[name="theme-color"]');
+const APP_THEME_COLOR = themeColor?.getAttribute('content');
+
 export default async function authView(root, { mode, query, onAuthed }) {
   document.title = mode === 'register' ? 'Create account · eBilling' : 'Sign in · eBilling';
+  themeColor?.setAttribute('content', '#0d0a08');
   let config = { demo: null };
   try {
     config = await api('/auth/config');
@@ -14,7 +20,7 @@ export default async function authView(root, { mode, query, onAuthed }) {
   }
 
   const loginForm = html`
-    <h2>Welcome back</h2>
+    <h2>Welcome back<span class="auth-dot">.</span></h2>
     <p class="sub">Sign in to manage your bills and stock.</p>
     <form novalidate data-form="login">
       <div class="field"><label for="email">Email</label>
@@ -32,7 +38,7 @@ export default async function authView(root, { mode, query, onAuthed }) {
     <p class="auth-switch">New here? <a href="/register">Create a free account</a></p>`;
 
   const registerForm = html`
-    <h2>Create your account</h2>
+    <h2>Create your account<span class="auth-dot">.</span></h2>
     <p class="sub">Set up your business in under a minute.</p>
     <form novalidate data-form="register">
       <div class="field"><label for="business_name">Business name</label>
@@ -53,18 +59,22 @@ export default async function authView(root, { mode, query, onAuthed }) {
   setHtml(root, html`
     <div class="auth">
       <section class="auth-side">
-        <div class="logo"><img class="brand-icon" src="/icons/icon-192.png" alt="" width="40" height="40">eBilling</div>
-        <div>
-          <h1>Bills, stock and payments — in one simple place.</h1>
-          <p>Create bills in seconds, keep inventory accurate automatically, and share bills on WhatsApp.</p>
-          <ul>
-            <li>${icon('check')}Fast billing with product search &amp; barcode entry</li>
-            <li>${icon('check')}Stock updates the moment a bill is finalized</li>
-            <li>${icon('check')}Track paid, partly paid and unpaid bills</li>
-            <li>${icon('check')}Secure, revocable invoice links for customers</li>
-          </ul>
+        <img class="auth-logo" src="/brand/devesh-studio-logo-dark.png" alt="Devesh Digital Studio" width="429" height="271">
+        <div class="auth-pitch">
+          <div class="auth-frame">
+            <span class="auth-label">eBilling</span>
+            <h1>Bills, jobs and payments, all in one place<span class="auth-dot">.</span></h1>
+          </div>
+          <p class="auth-lede">Billing, job tracking and the day book of Devesh Digital Studio.</p>
+          <ol class="auth-points">
+            <li><b>01</b>Bills in seconds, shared on WhatsApp</li>
+            <li><b>02</b>Stock that updates itself</li>
+            <li><b>03</b>Every job tracked, from photo to frame</li>
+            <li><b>04</b>Advances, payments and the day book</li>
+          </ol>
         </div>
-        <div style="color:#bfdbfe;font-size:13px">Your business data is private to your account.</div>
+        <p class="auth-foot">Your business data is private to your account.
+          <a href="https://deveshstudio.com" target="_blank" rel="noopener">deveshstudio.com</a></p>
       </section>
       <section class="auth-main"><div class="auth-card">${mode === 'register' ? registerForm : loginForm}</div></section>
     </div>`);
@@ -100,5 +110,7 @@ export default async function authView(root, { mode, query, onAuthed }) {
   if (query.next && mode === 'login') {
     root.querySelectorAll('a[href="/register"]').forEach((a) => a.setAttribute('href', `/register?next=${encodeURIComponent(query.next)}`));
   }
-  return () => {};
+  return () => {
+    if (APP_THEME_COLOR) themeColor.setAttribute('content', APP_THEME_COLOR);
+  };
 }

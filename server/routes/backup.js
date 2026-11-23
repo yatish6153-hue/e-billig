@@ -3,6 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { createBackup, stageBackup, restoreBackup } from '../services/backup.js';
+import { backupEmailSettings, saveBackupEmailSettings, sendBackupNow } from '../services/backup-email.js';
 import { mePayload } from './auth.js';
 
 const router = express.Router();
@@ -29,6 +30,21 @@ router.post('/check', async (req, res) => {
 router.post('/restore', (req, res) => {
   const restored = restoreBackup(req.businessId, (req.body || {}).upload);
   res.json({ ...mePayload(req.user.id), restored });
+});
+
+// Backups by email (services/backup-email.js): where to, every day or not, and "Send backup now".
+router.get('/email', (req, res) => {
+  res.json(backupEmailSettings(req.businessId));
+});
+
+router.put('/email', (req, res) => {
+  saveBackupEmailSettings(req.businessId, req.body || {});
+  res.json(backupEmailSettings(req.businessId));
+});
+
+router.post('/email/send', async (req, res) => {
+  const sent = await sendBackupNow(req.businessId);
+  res.json({ ...backupEmailSettings(req.businessId), sent });
 });
 
 export default router;

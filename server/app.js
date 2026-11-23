@@ -65,6 +65,8 @@ export function createApp() {
 
   app.use('/i', publicRoutes);
   app.use('/vendor/inter', express.static(path.join(ROOT, 'node_modules', '@fontsource-variable', 'inter'), { maxAge: '30d' }));
+  // The studio website's headline font (deveshstudio.com), for the sign-in page.
+  app.use('/vendor/bricolage', express.static(path.join(ROOT, 'node_modules', '@fontsource-variable', 'bricolage-grotesque'), { maxAge: '30d' }));
   app.use('/shared', express.static(path.join(ROOT, 'shared')));
   app.use(express.static(PUBLIC_DIR, { index: false }));
 
