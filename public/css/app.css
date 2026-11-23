@@ -581,8 +581,6 @@ details.menu > summary::-webkit-details-marker { display: none; }
 }
 .editor-meta .field-hint .icon { width: 14px; height: 14px; vertical-align: -2px; }
 .editor-meta .em-photo { grid-column: 1 / -1; }
-/* The per-item discount column only shows on bills that already use it; new bills take one discount % below. */
-.no-disc .l-disc, .no-disc .h-disc { display: none; }
 .bill-disc { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px 2px; }
 .bill-disc label { font-size: 13.5px; font-weight: 550; color: var(--text-2); }
 .bill-disc .input-affix { width: 116px; }
@@ -605,23 +603,25 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .lines { border-top: 1px solid var(--border); }
 .line, .lines-head {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 118px 108px 74px 104px 34px;
+  grid-template-columns: 26px minmax(0, 1fr) 118px 108px 92px 116px 34px;
   grid-template-areas: "num item qty price disc amt rm";
   gap: 10px; align-items: center; padding: 10px 18px;
 }
-@container lines (min-width: 880px) {
-  .no-disc .line, .no-disc .lines-head { grid-template-columns: 26px minmax(0, 1fr) 118px 108px 104px 34px; grid-template-areas: "num item qty price amt rm"; }
-}
 .lines-head { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); padding-top: 8px; padding-bottom: 8px; }
 .lines-head .r { text-align: right; }
-.line { border-bottom: 1px solid var(--border); }
+/* Rows line up at the top: the discount box has its ₹ amount under it. */
+.line { border-bottom: 1px solid var(--border); align-items: start; }
+.line .l-num, .line .l-rm { align-self: center; }
 .line:last-child { border-bottom: 0; }
 .line .l-num { grid-area: num; color: var(--muted); font-size: 12.5px; }
 .line .l-item { grid-area: item; min-width: 0; }
 .line .l-qty { grid-area: qty; }
 .line .l-price { grid-area: price; }
 .line .l-disc { grid-area: disc; }
-.line .l-amt { grid-area: amt; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 0; }
+.line .l-amt { grid-area: amt; min-width: 0; }
+.line .l-amt .input { font-weight: 650; }
+.line .l-off { font-size: 11.5px; color: var(--good); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; margin-top: 3px; }
+.line .l-off:empty { display: none; }
 .line .l-rm { grid-area: rm; }
 .line .l-label { display: none; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
 .line .item-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
@@ -629,6 +629,8 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .line .item-warn { font-size: 12px; color: var(--bad); font-weight: 550; }
 .line .input { height: 34px; padding: 0 8px; font-size: 13.5px; }
 .line .input.r { text-align: right; }
+.line .input-affix .input { padding-left: 24px; }
+.line .input-affix.suffix .input { padding-left: 8px; padding-right: 24px; }
 .qty-stepper { display: flex; align-items: center; }
 .qty-stepper .input { text-align: center; border-radius: 0; border-left: 0; border-right: 0; min-width: 0; padding: 0 4px; }
 .qty-stepper button {
@@ -646,15 +648,13 @@ details.menu > summary::-webkit-details-marker { display: none; }
 @container lines (max-width: 879px) {
   .lines-head { display: none; }
   .line {
-    grid-template-columns: 22px 132px 124px 78px minmax(0, 1fr) 34px;
+    grid-template-columns: 22px minmax(0, 132px) minmax(0, 124px) minmax(0, 104px) minmax(0, 132px) minmax(0, 1fr) 34px;
     grid-template-areas:
-      "num item item item amt rm"
-      ".   qty  price disc .   .";
+      "num item item item item item rm"
+      ".   qty  price disc amt  .    .";
     row-gap: 8px;
   }
   .line .l-label { display: block; }
-  .line .l-amt { align-self: start; font-size: 15px; }
-  .line .l-amt .l-label { display: none; }
 }
 @container lines (max-width: 540px) {
   .line {
@@ -666,8 +666,6 @@ details.menu > summary::-webkit-details-marker { display: none; }
     gap: 8px 10px; padding: 12px 14px;
   }
   .line .l-num { display: none; }
-  .line .l-amt { align-self: end; padding-bottom: 7px; }
-  .line .l-amt .l-label { display: block; }
   .line .input { height: 38px; font-size: 15px; }
   .qty-stepper button { height: 38px; width: 38px; }
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBill, computeLine, splitTax, paymentStatus } from '../shared/calc.js';
+import { computeBill, computeLine, priceForTotal, splitTax, paymentStatus } from '../shared/calc.js';
 import { formatMoney, toMinor, invoiceNumber } from '../shared/format.js';
 import { renderInvoiceHtml, invoiceTotals, billContacts } from '../shared/invoice-html.js';
 import {
@@ -92,6 +92,27 @@ test('line maths in minor units', () => {
   assert.equal(incl.gross - incl.discount, incl.taxable);
   // Fractional quantities (kg).
   assert.equal(computeLine({ quantity: 2.5, unit_price: 4600, tax_rate: 0 }).total, 11500);
+});
+
+test('typing a line total works the price out backwards', () => {
+  const totalOf = (price, qty, pct) => computeLine({ quantity: qty, unit_price: price, discount_pct: pct }).total;
+  // ₹2,100 after 30% off is a ₹3,000 price.
+  assert.equal(priceForTotal(210000, 1, 30), 300000);
+  assert.equal(priceForTotal(420000, 2, 30), 300000);
+  // ₹1,000 after 30% off: ₹1,428.57, and the line comes back to exactly ₹1,000.
+  assert.equal(priceForTotal(100000, 1, 30), 142857);
+  assert.equal(totalOf(142857, 1, 30), 100000);
+  // Exact totals wherever a price can give them.
+  for (const [total, qty, pct] of [[12345, 1, 30], [5000, 1.5, 12.5], [77, 7, 0], [0, 1, 30]]) {
+    assert.equal(totalOf(priceForTotal(total, qty, pct), qty, pct), total, `${total} for ${qty} at ${pct}%`);
+  }
+  // With 3 of an item a paisa of price moves the total by 2–3 paise, so the nearest has to do.
+  assert.ok(Math.abs(totalOf(priceForTotal(99999, 3, 30), 3, 30) - 99999) <= 1);
+  // No price can: no quantity, all of it off, or not an amount.
+  assert.equal(priceForTotal(1000, 0, 30), null);
+  assert.equal(priceForTotal(1000, 1, 100), null);
+  assert.equal(priceForTotal(Number.NaN, 1, 30), null);
+  assert.equal(priceForTotal(-100, 1, 30), null);
 });
 
 test('bill totals with round-off', () => {

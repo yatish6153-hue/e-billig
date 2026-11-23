@@ -29,6 +29,32 @@ export function computeLine(item, pricesIncludeTax = false) {
 }
 
 /**
+ * The price (minor units) that makes a line without tax come to `total` after its discount,
+ * for typing a line's total instead of its price. Of the nearby prices it picks one whose line
+ * total matches exactly (nearest when none does). Null when no price can: no quantity, a 100%
+ * discount, or a total that isn't a whole amount of 0 or more.
+ */
+export function priceForTotal(total, quantity, discountPct = 0) {
+  const qty = Number(quantity) || 0;
+  const pct = Math.min(100, Math.max(0, Number(discountPct) || 0));
+  const keep = 1 - pct / 100;
+  if (!(qty > 0) || keep <= 0 || !Number.isInteger(total) || total < 0) return null;
+  const guess = Math.round(total / (qty * keep));
+  let best = guess;
+  let bestDiff = Infinity;
+  for (const step of [0, -1, 1, -2, 2, -3, 3]) {
+    const price = guess + step;
+    if (price < 0) continue;
+    const diff = Math.abs(computeLine({ quantity: qty, unit_price: price, discount_pct: pct }).total - total);
+    if (diff < bestDiff) {
+      best = price;
+      bestDiff = diff;
+    }
+  }
+  return best;
+}
+
+/**
  * Compute a whole bill. discountPct takes a percentage off what the lines come to (bills without tax);
  * it is included in discount_total and reported on its own as bill_discount.
  * @returns {{lines, subtotal, discount_total, bill_discount, taxable_total, tax_total, round_off, total}}

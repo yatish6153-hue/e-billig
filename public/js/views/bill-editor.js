@@ -8,10 +8,13 @@ import { navigate, setLeaveGuard, clearLeaveGuard } from '../lib/router.js';
 import { moneyInput } from '../components/product-form.js';
 import { methodButtons } from '../components/payment-form.js';
 import { MAX_PHOTOS, hasCamera, onlyImages, pickPhotos, preparePhoto } from '../components/job-photos.js';
-import { computeBill } from '/shared/calc.js';
+import { computeBill, priceForTotal } from '/shared/calc.js';
 import { WORK_STAGES, PHOTO_SOURCES } from '/shared/tracking.js';
 import { invoiceTotals } from '/shared/invoice-html.js';
 import { fromMinor, toMinor, isoDate, formatMoney, formatQty, roundQty, currencyInfo } from '/shared/format.js';
+
+// Every item added to a bill starts with this discount %; it can be changed on each line.
+const ITEM_DISCOUNT = '30';
 
 let keySeq = 0;
 const newKey = () => `k${++keySeq}`;
@@ -20,7 +23,7 @@ const phoneKey = (p) => String(p || '').replace(/\D/g, '').slice(-10);
 function itemFromProduct(p) {
   return {
     key: newKey(), product_id: p.id, name: p.name, sku: p.sku, unit: p.unit,
-    qty: '1', price: fromMinor(p.selling_price), disc: '0',
+    qty: '1', price: fromMinor(p.selling_price), disc: ITEM_DISCOUNT,
     available: p.is_service ? null : p.quantity, service: !!p.is_service, custom: false,
   };
 }
@@ -77,7 +80,6 @@ export default async function billEditor(el, { app, params, query }) {
     items: [],
     advance: '', method: 'cash', reference: '',
     track: true,
-    showDiscount: false,
   };
   let dirty = false;
 
@@ -108,7 +110,6 @@ export default async function billEditor(el, { app, params, query }) {
   }
   // Left while loading: the page on screen now is another view's, so this one does nothing.
   if (!el.isConnected) return undefined;
-  state.showDiscount = state.items.some((it) => Number(it.disc) > 0);
   app.setTitle(state.id ? `Edit draft #${state.id}` : 'New bill');
 
   const guard = (opts) => !dirty || (!opts?.silent && window.confirm('You have unsaved changes on this bill. Leave without saving?'));
@@ -156,9 +157,9 @@ export default async function billEditor(el, { app, params, query }) {
             </div>
             <button type="button" class="btn" data-add-custom title="Add an item that isn't saved">${icon('plus')}Custom</button></div>
           </div>
-          <div class="lines-wrap ${state.showDiscount ? '' : 'no-disc'}">
+          <div class="lines-wrap">
             <div class="lines-head">
-              <span>#</span><span>Item</span><span>Qty</span><span class="r">Price</span><span class="r h-disc">Disc %</span><span class="r">Amount</span><span></span>
+              <span>#</span><span>Item</span><span>Qty</span><span class="r">Price</span><span class="r">Discount</span><span class="r">Total</span><span></span>
             </div>
             <div class="lines" data-lines></div>
           </div>
@@ -420,7 +421,7 @@ export default async function billEditor(el, { app, params, query }) {
 
   function addCustom(name = '') {
     state.items.push({
-      key: newKey(), product_id: null, name, sku: '', unit: '', qty: '1', price: '', disc: '0', available: null, custom: true,
+      key: newKey(), product_id: null, name, sku: '', unit: '', qty: '1', price: '', disc: ITEM_DISCOUNT, available: null, custom: true,
     });
     markDirty();
     searchInput.value = '';
@@ -535,9 +536,12 @@ export default async function billEditor(el, { app, params, query }) {
             <button type="button" data-step="1" aria-label="Increase quantity">${icon('plus')}</button></div></div>
         <div class="l-price"><div class="l-label">Price</div>
           ${moneyInput('', it.price, cur, 'data-f="price" aria-label="Price" placeholder="0.00"')}</div>
-        <div class="l-disc"><div class="l-label">Disc %</div>
-          <input class="input r" data-f="disc" inputmode="decimal" value="${it.disc}" aria-label="Discount percent"></div>
-        <div class="l-amt"><div class="l-label">Amount</div><span data-amt></span></div>
+        <div class="l-disc"><div class="l-label">Discount</div>
+          <div class="input-affix suffix"><input class="input r" data-f="disc" inputmode="decimal" autocomplete="off" value="${it.disc}" placeholder="0"
+            aria-label="Discount percent"><span class="affix">%</span></div>
+          <div class="l-off" data-off></div></div>
+        <div class="l-amt"><div class="l-label">Total</div>
+          ${moneyInput('', '', cur, 'data-total aria-label="Total after discount" placeholder="0.00"')}</div>
         <div class="l-rm"><button type="button" class="btn btn-ghost btn-icon btn-sm btn-danger" data-remove aria-label="Remove ${it.name || 'item'}">${icon('trash')}</button></div>
       </div>`)}`);
     linesEl.querySelectorAll('.line .input-affix .input').forEach((input) => input.classList.add('r'));
@@ -576,7 +580,14 @@ export default async function billEditor(el, { app, params, query }) {
     state.items.forEach((it, i) => {
       const row = linesEl.querySelector(`[data-key="${it.key}"]`);
       if (!row) return;
-      row.querySelector('[data-amt]').textContent = money(calc.lines[i].total);
+      const line = calc.lines[i];
+      row.querySelector('[data-off]').textContent = line.discount > 0 ? `− ${money(line.discount)}` : '';
+      // The total follows the price, except while it's the box being typed in (then the price follows it).
+      const totalInput = row.querySelector('[data-total]');
+      if (totalInput !== document.activeElement) {
+        totalInput.value = String(it.price).trim() ? fromMinor(line.total) : '';
+        totalInput.classList.remove('is-invalid');
+      }
       for (const [f, errKey] of [['qty', 'quantity'], ['price', 'unit_price'], ['disc', 'discount_pct'], ['name', 'name']]) {
         row.querySelector(`[data-f="${f}"]`)?.classList.toggle('is-invalid', !!parsed[i].errors[errKey]);
       }
@@ -626,6 +637,29 @@ export default async function billEditor(el, { app, params, query }) {
       input.value = it.price;
     }
   });
+  // Typing the total works the price out backwards: total ÷ qty ÷ (1 − discount %).
+  on(linesEl, 'input', '[data-total]', (e, input) => {
+    const it = itemByRow(input);
+    if (!it) return;
+    const priceInput = input.closest('.line').querySelector('[data-f=price]');
+    if (!input.value.trim()) {
+      it.price = '';
+      priceInput.value = '';
+      input.classList.remove('is-invalid');
+    } else {
+      const { quantity, discount_pct: disc } = parseItem(it);
+      const price = priceForTotal(toMinor(input.value), quantity, disc);
+      input.classList.toggle('is-invalid', price === null);
+      if (price !== null) {
+        it.price = fromMinor(price);
+        priceInput.value = it.price;
+      }
+    }
+    markDirty();
+    renderTotals();
+  });
+  // Leaving the total box tidies it to what the line now comes to (e.g. 2100 → 2100.00).
+  on(linesEl, 'focusout', '[data-total]', () => setTimeout(() => linesEl.isConnected && renderTotals()));
   on(linesEl, 'click', '[data-step]', (e, b) => {
     const it = itemByRow(b);
     if (!it) return;
