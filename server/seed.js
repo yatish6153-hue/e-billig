@@ -347,13 +347,14 @@ export async function ensureDemoAccount() {
   const hash = await hashPassword(DEMO_ACCOUNT.password);
   tx(() => {
     const biz = run(
-      `INSERT INTO businesses (tagline, name, address, phone, email, website, gstin, payment_details, invoice_terms)
-       VALUES ('A Complete Design Solution', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO businesses (tagline, name, address, phone, email, website, review_url, gstin, payment_details, invoice_terms)
+       VALUES ('A Complete Design Solution', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       'Devesh Digital Studio (Demo)',
       'Devesh Studio, B L Jangid Market\nPaota, Jaipur, Rajasthan 303106',
       '+91 97990 16153',
       'devesh.paota@gmail.com',
       'www.deveshstudio.com',
+      'https://share.google/8Y1GCmLvCGRivKVRY',
       '',
       '',
       '50% advance confirms the booking; the balance is due on delivery.\nEdited photos are delivered within 15 days of the event.',

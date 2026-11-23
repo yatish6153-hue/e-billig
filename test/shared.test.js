@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeBill, computeLine, priceForTotal, splitTax, paymentStatus } from '../shared/calc.js';
 import { formatMoney, toMinor, invoiceNumber } from '../shared/format.js';
-import { renderInvoiceHtml, invoiceTotals, billContacts } from '../shared/invoice-html.js';
+import { renderInvoiceHtml, invoiceTotals, billContacts, reviewLink, onAccent } from '../shared/invoice-html.js';
 import {
   dayWindow, windowsOverlap, clashDay, scheduleOf, servicesOf, bookingTotals, weekStart, daysBetween, shootState, deliveryState,
   progressSteps, matchesQuick, sectionsFor, deliverablesFor, formatTime, bookingReminders,
@@ -153,6 +153,38 @@ test('helpers', () => {
   assert.equal(toMinor('1,234.5'), 123450);
   assert.ok(Number.isNaN(toMinor('12.345')));
   assert.equal(invoiceNumber('INV-', 7), 'INV-0007');
+});
+
+test('the bill asks for a review: a button to the link, Google wording, numbered items; never on a cancelled bill', () => {
+  const business = { name: 'Studio', review_url: 'https://share.google/8Y1GCmLvCGRivKVRY' };
+  const items = [{ name: 'Frame', quantity: 1, unit: '', unit_price: 100000, discount_pct: 30, tax_rate: 0,
+    gross: 100000, discount: 30000, taxable: 70000, tax: 0, total: 70000 }];
+  const bill = {
+    id: 2, invoice_no: 'INV-0002', status: 'finalized', payment_status: 'paid', bill_date: '2026-11-23', currency: 'INR',
+    with_gst: false, customer_name: 'Kavita', subtotal: 100000, discount_total: 30000, taxable_total: 70000, tax_total: 0,
+    round_off: 0, total: 70000, amount_paid: 70000,
+  };
+  assert.deepEqual(reviewLink(business), { url: 'https://share.google/8Y1GCmLvCGRivKVRY', google: true });
+  assert.equal(reviewLink({ review_url: 'https://g.page/r/abc/review' }).google, true);
+  assert.equal(reviewLink({ review_url: 'https://search.google.com/local/writereview?placeid=X' }).google, true);
+  assert.equal(reviewLink({ review_url: 'https://www.justdial.com/x' }).google, false);
+  assert.equal(reviewLink({ review_url: 'javascript:alert(1)' }), null);
+  assert.equal(reviewLink({ review_url: '' }), null);
+
+  const html = renderInvoiceHtml({ business, bill, items });
+  assert.match(html, /Review us on Google<span class="inv-dot">\.<\/span>/);
+  assert.match(html, /<a class="inv-review-btn" href="https:\/\/share\.google\/8Y1GCmLvCGRivKVRY" target="_blank" rel="noopener">Write a review/);
+  assert.doesNotMatch(html, /<img[^>]*QR/i, 'no QR code: the bill goes out on WhatsApp');
+  assert.match(html, /<td class="inv-no">01<\/td>/, 'items are numbered like frames on a contact sheet');
+  // The button's words: near-black on the studio orange (as on the website), white on a dark colour.
+  assert.match(html, /--on-accent:#1a0900/);
+  assert.equal(onAccent('#f26b1d'), '#1a0900');
+  assert.equal(onAccent('#2563eb'), '#ffffff');
+  assert.equal(onAccent('#141414'), '#ffffff');
+  // Another site gets plain wording; a cancelled bill doesn't ask.
+  assert.match(renderInvoiceHtml({ business: { ...business, review_url: 'https://www.justdial.com/x' }, bill, items }), /Leave us a review/);
+  assert.doesNotMatch(renderInvoiceHtml({ business, bill: { ...bill, status: 'cancelled' }, items }), /inv-review/);
+  assert.doesNotMatch(renderInvoiceHtml({ business: { name: 'Studio' }, bill, items }), /inv-review/);
 });
 
 test('simple invoice: total, advance and balance; GST only when chosen', () => {

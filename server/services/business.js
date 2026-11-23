@@ -25,7 +25,7 @@ export function productCategories(businessId) {
 }
 
 // Everything except the logo blob.
-export const BUSINESS_COLUMNS = `id, name, address, phone, email, website, gstin, logo_mime, logo_updated_at, currency,
+export const BUSINESS_COLUMNS = `id, name, address, phone, email, website, review_url, gstin, logo_mime, logo_updated_at, currency,
   invoice_prefix, next_invoice_no, tax_label, default_tax_rate, tax_rates, prices_include_tax, split_tax,
   round_off, default_with_gst, payment_details, upi_id, invoice_terms, tagline, bill_color, bill_header, expense_types,
   created_at, updated_at`;

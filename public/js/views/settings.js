@@ -94,6 +94,9 @@ export default async function settings(el, { app }) {
               <div class="field span-all"><label>UPI ID for payments</label>
                 <input class="input" name="upi_id" value="${b.upi_id}" maxlength="100" placeholder="e.g. deveshstudio@okaxis" autocomplete="off" spellcheck="false">
                 <span class="field-hint">Bills you share include a <strong>Pay now</strong> link: the customer's UPI app (Google Pay, PhonePe, Paytm…) opens with the balance filled in. The PDF gets a QR code to scan.</span></div>
+              <div class="field span-all"><label>Google review link</label>
+                <input class="input" name="review_url" value="${b.review_url}" maxlength="300" placeholder="e.g. https://g.page/r/…/review" autocomplete="off" spellcheck="false">
+                <span class="field-hint">Bills get a <strong>Review us on Google</strong> box with a button that opens this link.</span></div>
               <div class="field span-all"><label>Payment details</label>
                 <textarea class="input" name="payment_details" rows="2" maxlength="500" placeholder="e.g. Bank: A/c 1234, IFSC ABCD0001234">${b.payment_details}</textarea>
                 <span class="field-hint">Printed on bills so customers know how to pay.</span></div>

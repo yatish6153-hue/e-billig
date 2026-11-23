@@ -449,6 +449,15 @@ test('share links: unguessable, scoped to one invoice, revocable', async () => {
   assert.match(htmlText, new RegExp(one.invoice_no));
   assert.doesNotMatch(htmlText, new RegExp(two.invoice_no), 'only the shared invoice is visible');
   assert.equal(page.headers.get('x-robots-tag'), 'noindex, nofollow');
+  assert.doesNotMatch(htmlText, /inv-review/, 'no review link, no review card');
+
+  // With a review link the customer's page asks for a review: a button that opens it.
+  const settings = (await c.get('/api/settings')).data.business;
+  assert.equal((await c.put('/api/settings', { ...settings, review_url: 'https://g.page/r/abc123/review' })).status, 200);
+  const reviewPage = await (await fetch(`${base}${url.pathname}`)).text();
+  assert.match(reviewPage, /Review us on Google/);
+  assert.match(reviewPage, /class="inv-review-btn" href="https:\/\/g\.page\/r\/abc123\/review"/);
+
   const pdf = await fetch(`${base}${url.pathname}/pdf`);
   assert.equal(pdf.headers.get('content-type'), 'application/pdf');
   assert.equal((await fetch(`${base}/i/not-a-real-token-at-all-0000000`)).status, 404);
@@ -594,6 +603,17 @@ test('settings: business details, numbering, UPI ID and logo validation', async 
     assert.equal(r.status, 400, website);
     assert.equal(r.data.error.field, 'website');
   }
+
+  // Review link: https:// is added when left off; anything but a plain web address is refused.
+  const rev = await c.put('/api/settings', { ...saved.data.business, review_url: ' share.google/8Y1GCmLvCGRivKVRY ' });
+  assert.equal(rev.status, 200);
+  assert.equal(rev.data.business.review_url, 'https://share.google/8Y1GCmLvCGRivKVRY');
+  for (const reviewUrl of ['not a link', 'javascript:alert(1)', 'https://g.page/r/<b>', 'https://user:pw@g.page/r/x', 'https://localhost/x']) {
+    const r = await c.put('/api/settings', { ...saved.data.business, review_url: reviewUrl });
+    assert.equal(r.status, 400, reviewUrl);
+    assert.equal(r.data.error.field, 'review_url');
+  }
+  assert.equal((await c.put('/api/settings', { ...saved.data.business, review_url: '' })).data.business.review_url, '');
 
   // Bill design: tagline, colour and header style.
   assert.equal(base.bill_color, '#f26b1d');

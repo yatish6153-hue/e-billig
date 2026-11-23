@@ -1,13 +1,17 @@
 /* The bill — used in the app's bill view and on the customer's link.
-   Studio style: header band with lens rings, accent bar, clean items, stamp, and a film-strip
-   footer whose frames hold the business's phone, email, website and address. */
+   Studio style, after the studio's website: a warm-black header band with a glow and lens rings, accent bar,
+   "● Label" eyebrows, the customer in viewfinder corners, numbered items like a contact sheet, stamp,
+   a cream "Review us on Google." card with a QR code, and a film-strip footer whose frames hold the
+   business's phone, email, website and address. */
 .invoice {
   --accent: #f26b1d;
   --ink: #16181d;
   --muted: #6b7280;
   --line: #ececec;
-  --band: #141414;
+  --band: #0d0a08;
+  --gold: #ffb23e;
   --accent-soft: color-mix(in srgb, var(--accent) 9%, #fff);
+  --cream: color-mix(in srgb, var(--accent) 6%, #fffaf4);
   position: relative;
   overflow: hidden;
   background: #fff;
@@ -30,12 +34,16 @@
 }
 .inv-status-cancelled .inv-watermark { color: rgba(220, 38, 38, 0.1); }
 
-/* Header band */
+/* Header band: warm black with a glow of the business colour from the top right, like a studio light. */
 .inv-band {
   display: flex; justify-content: space-between; align-items: center; gap: 20px;
-  padding: 26px 32px; background: var(--band); color: #fff;
+  padding: 26px 32px; color: #fff;
+  background: radial-gradient(85% 170% at 100% 0%, color-mix(in srgb, var(--accent) 38%, transparent), transparent 70%), var(--band);
 }
-.inv-light .inv-band { background: #fff; color: var(--ink); border-bottom: 1px solid var(--line); }
+.inv-light .inv-band {
+  color: var(--ink); border-bottom: 1px solid var(--line);
+  background: radial-gradient(85% 170% at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%), #fff;
+}
 /* Faint lens rings in the business colour, behind the bill number. */
 .inv-band { overflow: hidden; }
 .inv-band > * { position: relative; z-index: 1; }
@@ -48,22 +56,40 @@
 .inv-brand { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .inv-logo { max-width: 120px; max-height: 72px; width: auto; height: auto; object-fit: contain; border-radius: 10px; flex-shrink: 0; }
 .inv-brand-text { min-width: 0; }
-.inv-business { font-size: 21px; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+.inv-business { font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; }
 .inv-tagline { margin-top: 5px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+/* On the dark band the tagline is marigold, a warmer shade of the business colour. */
+.inv-dark .inv-tagline { color: color-mix(in srgb, var(--accent) 55%, #ffc857); }
 .inv-doc { text-align: right; flex-shrink: 0; }
 .inv-title { font-size: 11.5px; font-weight: 750; letter-spacing: 0.26em; text-transform: uppercase; color: var(--accent); }
-.inv-number { font-size: 23px; font-weight: 750; letter-spacing: -0.01em; line-height: 1.25; }
+.inv-number { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.25; }
 .inv-date { font-size: 12.5px; color: #a3a3a3; }
 .inv-light .inv-date { color: var(--muted); }
 .inv-accent { height: 5px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #ffc857)); }
 
 /* Billed to / from */
-.inv-info { display: flex; justify-content: space-between; gap: 28px; padding: 24px 32px 6px; }
+.inv-info { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding: 24px 32px 6px; }
+/* "● LABEL": every label starts with a dot in the business colour. */
 .inv-label {
   display: block; margin-bottom: 6px;
   font-size: 10.5px; font-weight: 750; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
 }
-.inv-to-name { font-size: 17px; font-weight: 700; line-height: 1.3; }
+.inv-label::before, .inv-title::before {
+  content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%;
+  background: currentColor; vertical-align: 0.12em;
+}
+/* The customer in a camera's viewfinder: four corner marks in the business colour. */
+.inv-to {
+  --vf: color-mix(in srgb, var(--accent) 75%, #fff);
+  min-width: 240px; max-width: 60%; padding: 13px 18px 14px;
+  background:
+    linear-gradient(var(--vf), var(--vf)) left top / 14px 2px, linear-gradient(var(--vf), var(--vf)) left top / 2px 14px,
+    linear-gradient(var(--vf), var(--vf)) right top / 14px 2px, linear-gradient(var(--vf), var(--vf)) right top / 2px 14px,
+    linear-gradient(var(--vf), var(--vf)) left bottom / 14px 2px, linear-gradient(var(--vf), var(--vf)) left bottom / 2px 14px,
+    linear-gradient(var(--vf), var(--vf)) right bottom / 14px 2px, linear-gradient(var(--vf), var(--vf)) right bottom / 2px 14px;
+  background-repeat: no-repeat;
+}
+.inv-to-name { font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; }
 .inv-to-line { display: flex; align-items: center; gap: 6px; color: #374151; margin-top: 2px; }
 .inv-icon { width: 14px; height: 14px; flex-shrink: 0; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .inv-from { text-align: right; color: var(--muted); font-size: 12px; line-height: 1.6; max-width: 46%; }
@@ -84,6 +110,9 @@
 .inv-item-meta { color: var(--muted); font-size: 11px; }
 .inv-item-mobile { display: none; color: #4b5563; font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .inv-amount { font-weight: 700; }
+/* 01, 02 … like the frame numbers on a contact sheet. */
+.inv-items .inv-no { width: 34px; padding-right: 4px; color: var(--accent); font-weight: 750; letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.inv-items td.inv-no { padding-top: 14px; font-size: 11.5px; }
 
 /* Totals, advance and balance */
 .inv-summary { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding: 18px 32px 6px; }
@@ -92,7 +121,7 @@
 .inv-totals { width: 100%; border-collapse: collapse; }
 .inv-totals td { padding: 4px 0; color: #4b5563; }
 .inv-totals .r { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.inv-grand td { padding-top: 10px; border-top: 2px solid var(--ink); font-size: 19px; font-weight: 750; color: var(--ink); }
+.inv-grand td { padding-top: 10px; border-top: 2px solid var(--ink); font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); }
 .inv-pay { margin-top: 12px; border-radius: 12px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 35%, #fff); }
 .inv-pay-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; font-variant-numeric: tabular-nums; background: var(--accent-soft); }
 .inv-pay-balance { background: var(--accent); color: #fff; font-size: 16px; font-weight: 750; }
@@ -111,6 +140,36 @@
 /* Notes, terms, footer */
 .inv-section { padding: 0 32px; margin-top: 18px; }
 .inv-terms > div:last-child { color: var(--muted); font-size: 12px; }
+
+/* "Review us on Google." — a cream card with gold stars and a "Write a review" button, made for a tap on a phone. */
+.inv-review {
+  display: flex; align-items: center; gap: 22px; margin: 24px 32px 0; padding: 18px 22px;
+  border-radius: 16px; background: var(--cream); border: 1px solid color-mix(in srgb, var(--accent) 20%, #fff);
+  overflow: hidden;
+}
+/* A faint lens in the corner behind the button. */
+.inv-review::after {
+  content: ''; position: absolute; z-index: 0; right: -70px; bottom: -110px; width: 230px; height: 230px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 16px, color-mix(in srgb, var(--accent) 16%, transparent) 16px 17px);
+  pointer-events: none;
+}
+.inv-review > * { position: relative; z-index: 1; }
+.inv-review-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.inv-review-text .inv-label { margin-bottom: 0; }
+.inv-review-title { font-size: 20px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; color: var(--ink); }
+.inv-dot { color: var(--accent); }
+.inv-stars { display: flex; gap: 2px; }
+.inv-star { width: 17px; height: 17px; fill: var(--gold); }
+.inv-review-note { color: #57534e; font-size: 12px; }
+/* A pill like the website's buttons; its words are near-black or white, whichever reads better on the colour. */
+.inv-review-btn {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 46px; padding: 0 22px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent, #fff); font-size: 14.5px; font-weight: 750; text-decoration: none; white-space: nowrap;
+  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.inv-review-btn:hover { filter: brightness(1.05); }
+.inv-review-btn .inv-icon { width: 15px; height: 15px; stroke: currentColor; stroke-width: 2.4; }
 .inv-foot { margin-top: 30px; }
 /* — 📷 Thank you for choosing … — with lines fading in from both sides. */
 .inv-thanks { display: flex; align-items: center; gap: 14px; padding: 0 32px 16px; color: var(--muted); font-size: 12.5px; }
@@ -123,7 +182,7 @@
 .inv-thanks-text b { font-style: normal; font-weight: 700; color: var(--ink); }
 /* The film strip: sprocket holes along both edges, the contact details in its frames. */
 .inv-reel { position: relative; padding: 17px 32px; background: var(--band); color: #fff; }
-.inv-light .inv-reel { background: #2a2a2a; }
+.inv-light .inv-reel { background: #261e19; }
 .inv-reel-empty { height: 26px; padding: 0; }
 .inv-reel::before, .inv-reel::after {
   content: ''; position: absolute; left: 0; right: 0; height: 5px;
@@ -155,7 +214,8 @@ a.inv-contact:hover { border-color: var(--accent); }
   .inv-doc { text-align: left; }
   .inv-logo { max-width: 96px; max-height: 60px; }
   .inv-business { font-size: 18px; }
-  .inv-info { flex-direction: column; gap: 14px; padding: 18px 18px 4px; }
+  .inv-info { flex-direction: column; align-items: stretch; gap: 14px; padding: 18px 18px 4px; }
+  .inv-to { min-width: 0; max-width: none; }
   .inv-from { text-align: left; max-width: none; }
   .inv-table-wrap { padding: 6px 18px 0; }
   .inv-items .inv-col-detail { display: none; }
@@ -163,6 +223,11 @@ a.inv-contact:hover { border-color: var(--accent); }
   .inv-summary { flex-direction: column-reverse; gap: 10px; padding: 16px 18px 4px; }
   .inv-summary-right { width: 100%; }
   .inv-section { padding: 0 18px; }
+  .inv-items .inv-no { width: 28px; }
+  /* On a phone the button goes under the words, full width, an easy tap. */
+  .inv-review { flex-direction: column; align-items: stretch; margin: 20px 18px 0; padding: 16px; gap: 14px; }
+  .inv-review-title { font-size: 18px; }
+  .inv-review-btn { width: 100%; }
   /* Narrow: the camera over the thank-you line, and the contacts as one column of equal frames. */
   .inv-thanks { justify-content: center; padding: 0 18px 12px; }
   .inv-thanks::before, .inv-thanks::after { display: none; }
@@ -275,7 +340,9 @@ a.inv-contact:hover { border-color: var(--accent); }
   .invoice { border: 0; box-shadow: none; border-radius: 0; }
   .inv-items .inv-col-detail { display: table-cell; }
   .inv-item-mobile { display: none; }
-  .inv-band, .inv-accent, .inv-reel, .inv-contact-ic, .inv-pay-row, .inv-items th, .inv-stamp {
+  .inv-band, .inv-accent, .inv-reel, .inv-contact-ic, .inv-pay-row, .inv-items th, .inv-stamp, .inv-to, .inv-review,
+  .inv-review-btn, .inv-label::before, .inv-title::before {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
+  .inv-review { break-inside: avoid; }
 }

@@ -455,6 +455,10 @@ const MIGRATIONS = [
   `
   ALTER TABLE businesses ADD COLUMN product_categories TEXT NOT NULL DEFAULT '';
   `,
+  // v19 — the link customers use to review the business (Google, say): bills show it with a QR code.
+  `
+  ALTER TABLE businesses ADD COLUMN review_url TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function openDb(file) {

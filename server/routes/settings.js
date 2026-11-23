@@ -34,6 +34,26 @@ function website(value) {
   return slash < 0 ? s.toLowerCase() : s.slice(0, slash).toLowerCase() + s.slice(slash);
 }
 
+/**
+ * The link customers review the business at (Google's "share" or g.page link, say), printed on bills with a
+ * QR code. https:// is added when left off; anything but an http(s) web address is refused.
+ */
+function reviewUrl(value) {
+  let s = v.text(value, 'review_url', 'Review link', { max: 300 });
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  let url = null;
+  try {
+    url = new URL(s);
+  } catch {
+    // Not a web address; refused below.
+  }
+  if (!url || /[\s<>"'`\\]/.test(s) || url.username || url.password || !/^[a-z0-9.-]+\.[a-z]{2,24}$/i.test(url.hostname)) {
+    throw v.badRequest('Enter your review link, like https://g.page/r/…/review.', 'review_url');
+  }
+  return s;
+}
+
 router.get('/', (req, res) => {
   res.json({ business: serializeBusiness(getBusiness(req.businessId)) });
 });
@@ -50,6 +70,7 @@ router.put('/', (req, res) => {
     phone: v.phone(b.phone, 'phone', 'Phone'),
     email: v.email(b.email, 'email', 'Email'),
     website: website(b.website),
+    review_url: reviewUrl(b.review_url),
     currency: v.oneOf(b.currency, Object.keys(CURRENCIES), 'currency', 'Currency'),
     invoice_prefix: prefix,
     next_invoice_no: v.integer(b.next_invoice_no, 'next_invoice_no', 'Next invoice number', { min: 1, max: 99_999_999 }),

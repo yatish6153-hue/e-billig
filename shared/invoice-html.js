@@ -1,8 +1,9 @@
 // The bill, shared by the in-app bill view and the customer's link.
-// Studio style: dark (or light) header band with logo, tagline and faint lens rings, an accent bar
-// in the business colour, items, then Total / Advance / Balance with a rubber-stamp status mark,
-// and a film-strip footer that carries the business's phone, email, website and address.
-// Styling lives in /css/invoice.css. Every value is escaped.
+// Studio style: a warm-black (or light) header band with logo, tagline, a glow and faint lens rings in the
+// business colour, an accent bar, the customer framed by viewfinder corners, numbered items like frames on a
+// contact sheet, Total / Advance / Balance with a rubber-stamp status mark, a "Review us on Google" card with
+// a "Write a review" button, and a film-strip footer that carries the business's phone, email, website and
+// address. Labels start with a dot in the business colour. Styling lives in /css/invoice.css. Every value is escaped.
 import { escapeHtml as e, formatMoney, formatQty, formatDate, billDisplayStatus } from './format.js';
 import { taxBreakdown, splitTax } from './calc.js';
 
@@ -10,6 +11,22 @@ export const DEFAULT_BILL_COLOR = '#f26b1d';
 
 export function billColor(business) {
   return /^#[0-9a-f]{6}$/i.test(business?.bill_color || '') ? business.bill_color : DEFAULT_BILL_COLOR;
+}
+
+const ON_ACCENT_DARK = '#1a0900';
+
+/**
+ * The colour for words on the business colour (#rrggbb): near-black or white, whichever reads better.
+ * Orange gets near-black, as on the studio website's buttons; dark colours get white.
+ */
+export function onAccent(hex) {
+  const lum = (h) => {
+    const [r, g, b] = h.match(/[0-9a-f]{2}/gi).map((x) => parseInt(x, 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const l = lum(hex);
+  return (l + 0.05) / (lum(ON_ACCENT_DARK) + 0.05) > 1.05 / (l + 0.05) ? ON_ACCENT_DARK : '#ffffff';
 }
 
 function lines(text) {
@@ -91,10 +108,40 @@ export const BILL_ICONS = {
   globe: ['M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0', 'M12 2a14.5 14.5 0 0 0 0 20a14.5 14.5 0 0 0 0-20', 'M2 12h20'],
   pin: ['M20 10c0 4.99-5.54 10.19-7.4 11.79a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0', 'M9 10a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
   camera: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3Z', 'M9 13a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
+  external: ['M7 17 17 7', 'M8 7h9v9'],
 };
+
+/** A five-point star on the same 24×24 grid, filled (the review card's rating). */
+export const BILL_STAR = 'M12 2.6l2.83 5.73 6.32.92-4.57 4.46 1.08 6.3L12 17.03l-5.66 2.98 1.08-6.3-4.57-4.46 6.32-.92Z';
+export const STAR_COLOR = '#ffb23e';
 
 const svgIcon = (key, cls = 'inv-icon') =>
   `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${BILL_ICONS[key].map((d) => `<path d="${d}"/>`).join('')}</svg>`;
+
+/**
+ * The business's review link for the bill, or null: the url to open, and whether it's Google's (the card
+ * then says "Review us on Google").
+ */
+export function reviewLink(business) {
+  const url = String(business?.review_url || '').trim();
+  if (!/^https?:\/\/[^\s<>"'`\\]+$/i.test(url)) return null;
+  const host = url.replace(/^https?:\/\//i, '').split(/[/?#:]/)[0].toLowerCase();
+  const google = /(^|\.)(google\.[a-z.]+|g\.page|goo\.gl|g\.co|share\.google)$/.test(host);
+  return { url, google };
+}
+
+/** The review card's words, shared with the PDF. */
+export function reviewCopy(review) {
+  return {
+    label: 'Loved our work?',
+    title: review.google ? 'Review us on Google' : 'Leave us a review',
+    note: 'It takes a minute and means a lot to us.',
+    button: 'Write a review',
+  };
+}
+
+/** Items are numbered like frames on a contact sheet: 01, 02 … */
+export const frameNo = (i) => String(i + 1).padStart(2, '0');
 
 /**
  * The business's contact details for the bill's footer, in order: phone, email, website, then the
@@ -136,7 +183,7 @@ export function renderInvoiceHtml({ business, bill, items, logoUrl = null }) {
       : `<div class="${cls}">${body}</div>`;
   }).join('');
 
-  const itemRows = items.map((item) => {
+  const itemRows = items.map((item, i) => {
     const amount = incl ? item.total : item.taxable;
     const qty = `${e(formatQty(item.quantity))} ${e(item.unit || '')}`.trim();
     const disc = Number(item.discount_pct) > 0 ? rate(item.discount_pct) : '';
@@ -144,6 +191,7 @@ export function renderInvoiceHtml({ business, bill, items, logoUrl = null }) {
     const summary = [`${qty} &times; ${money(item.unit_price)}`, disc && `${disc} off`,
       showTax && `${e(bill.tax_label || 'GST')} ${rate(item.tax_rate)}`].filter(Boolean).join(' &middot; ');
     return `<tr>
+      <td class="inv-no">${frameNo(i)}</td>
       <td class="inv-item">
         <div class="inv-item-name">${e(item.name)}</div>
         ${gst && item.hsn ? `<div class="inv-item-meta">HSN/SAC ${e(item.hsn)}</div>` : ''}
@@ -170,7 +218,22 @@ export function renderInvoiceHtml({ business, bill, items, logoUrl = null }) {
 
   const section = (label, body, cls = '') => `<div class="inv-section ${cls}"><div class="inv-label">${e(label)}</div><div>${body}</div></div>`;
 
-  return `<article class="invoice ${dark ? 'inv-dark' : 'inv-light'} inv-status-${status}" style="--accent:${billColor(business)}">
+  // Asking for a review: not on a cancelled bill.
+  const review = bill.status === 'cancelled' ? null : reviewLink(business);
+  const words = review && reviewCopy(review);
+  const star = `<svg class="inv-star" viewBox="0 0 24 24" aria-hidden="true"><path d="${BILL_STAR}"/></svg>`;
+  const reviewBlock = review ? `<section class="inv-review">
+    <div class="inv-review-text">
+      <span class="inv-label">${e(words.label)}</span>
+      <span class="inv-review-title">${e(words.title)}<span class="inv-dot">.</span></span>
+      <span class="inv-stars" role="img" aria-label="5 stars">${star.repeat(5)}</span>
+      <span class="inv-review-note">${e(words.note)}</span>
+    </div>
+    <a class="inv-review-btn" href="${e(review.url)}" target="_blank" rel="noopener">${e(words.button)}${svgIcon('external')}</a>
+  </section>` : '';
+
+  const accent = billColor(business);
+  return `<article class="invoice ${dark ? 'inv-dark' : 'inv-light'} inv-status-${status}" style="--accent:${accent};--on-accent:${onAccent(accent)}">
   ${status === 'cancelled' || status === 'draft' ? `<div class="inv-watermark">${status === 'draft' ? 'DRAFT' : 'CANCELLED'}</div>` : ''}
   <header class="inv-band">
     <div class="inv-brand">
@@ -203,7 +266,7 @@ export function renderInvoiceHtml({ business, bill, items, logoUrl = null }) {
   <div class="inv-table-wrap">
     <table class="inv-items">
       <thead><tr>
-        <th>Item</th><th class="r inv-col-detail">Qty</th>
+        <th class="inv-no">#</th><th>Item</th><th class="r inv-col-detail">Qty</th>
         <th class="r inv-col-detail">Rate${incl ? ' (incl. GST)' : ''}</th>
         ${showDiscount ? '<th class="r inv-col-detail">Disc.</th>' : ''}
         ${showTax ? `<th class="r inv-col-detail">${e(bill.tax_label || 'GST')}</th>` : ''}
@@ -228,6 +291,7 @@ export function renderInvoiceHtml({ business, bill, items, logoUrl = null }) {
   ${bill.notes ? section('Notes', lines(bill.notes)) : ''}
   ${business.payment_details ? section('Payment details', lines(business.payment_details)) : ''}
   ${business.invoice_terms ? section('Terms', lines(business.invoice_terms), 'inv-terms') : ''}
+  ${reviewBlock}
 
   <footer class="inv-foot">
     <div class="inv-thanks"><span class="inv-thanks-text">${svgIcon('camera')}<span>Thank you for choosing <b>${e(business.name)}</b></span></span></div>
